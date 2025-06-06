@@ -1,29 +1,20 @@
-#include "fsmgine.hpp"
-#include <iostream> // For std::cerr, std::endl
-#include <fstream>  // For std::ofstream to truncate files
-#include <exception> // For std::exception
+#include "FSMgineCore.hpp"
+#include <iostream>
+#include <fstream> // Only if you want to test with file args, otherwise stdin/stdout
 
-int main() {
-    const std::string code_output_file = "code.cpp";
-    const std::string header_output_file = "header.hpp";
+int main(int /* argc */, char** /* argv[] */) {
+    // For simplicity, always use stdin and stdout as per the plan
+    // You could add command-line argument parsing here to specify input/output files
+    // if desired in the future.
 
-    // Truncate/clear output files before starting
-    std::ofstream(code_output_file, std::ios::trunc).close();
-    std::ofstream(header_output_file, std::ios::trunc).close();
-    // Could add checks here to ensure truncation was successful if needed
+    // Disable synchronization with C-style I/O for potentially faster std::cin/cout.
+    std::ios_base::sync_with_stdio(false);
+    std::cin.tie(NULL);
 
-    try {
-        // Create an FSMgine instance.
-        // It now manages its own transitions and output files.
-        FSMgine fsm(code_output_file, header_output_file);
-
-        // Execute the FSM
-        fsm.execute();
-
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
+    if (fsm_gine::process_source(std::cin, std::cout)) {
+        return 0; // Success
+    } else {
+        std::cerr << "FSMgine: Processing failed.\n";
+        return 1; // Failure
     }
-
-    return 0;
 }
