@@ -5,6 +5,7 @@
 #include <vector>
 #include <iostream> // For std::cerr
 #include <sstream>
+#include <fstream>
 
 namespace fsm_gine {
 
@@ -28,7 +29,7 @@ std::string extract_fsm_name(std::string_view line) {
 }
 
 
-bool process_source(std::istream& input, std::ostream& output) {
+bool process_source(std::istream& input, std::ostream& output, bool generate_dot, bool generate_mermaid) {
     std::string line;
     std::vector<std::string> output_buffer; // To reconstruct output
 
@@ -53,15 +54,19 @@ bool process_source(std::istream& input, std::ostream& output) {
                     }
                     current_dsl_content.clear();
                     current_state = ParserState::INSIDE_DEFINITION_BLOCK;
-                    output_buffer.push_back(line); // Keep the definition start comment
-                } else {
+                    if (!generate_dot && !generate_mermaid) {
+                        output_buffer.push_back(line); // Keep the definition start comment
+                    }
+                } else if (!generate_dot && !generate_mermaid) {
                     output_buffer.push_back(line); // Pass through other lines
                 }
                 break;
             }
 
             case ParserState::INSIDE_DEFINITION_BLOCK: {
-                output_buffer.push_back(line); // Keep all lines within the block for output integrity
+                if (!generate_dot && !generate_mermaid) {
+                    output_buffer.push_back(line); // Keep all lines within the block for output integrity
+                }
                 if (line.find("*/") != std::string::npos) { // End of definition block
                     current_state = ParserState::SCANNING_FOR_MACRO_PLACEHOLDER;
                 } else {
@@ -96,70 +101,75 @@ bool process_source(std::istream& input, std::ostream& output) {
                     }
 
                     if (all_rules_parsed_ok && !parsed_rules.empty()) {
-                        std::string generated_cpp = code_generator::generate_transitions_cpp(parsed_rules);
-                        
-                        // Output the macro definition line with line continuation
-                        output_buffer.push_back(expected_macro_start + " \\");
-                        
-                        // Split generated_cpp into lines and append with indentation and line continuation
-                        std::stringstream cpp_ss(generated_cpp);
-                        std::string cpp_line;
-                        std::vector<std::string> code_lines;
-                        while(std::getline(cpp_ss, cpp_line, '\n')) {
-                            code_lines.push_back(cpp_line);
-                        }
+                        if (generate_dot) {
+                            // Output DOT content directly to stdout
+                            output << code_generator::generate_dot_file(current_fsm_definition_name, parsed_rules);
+                        } else if (generate_mermaid) {
+                            // Output Mermaid content directly to stdout
+                            output << code_generator::generate_mermaid_file(current_fsm_definition_name, parsed_rules);
+                        } else {
+                            std::string generated_cpp = code_generator::generate_transitions_cpp(parsed_rules);
 
-                        for(size_t i = 0; i < code_lines.size(); ++i) {
-                            std::string line_to_add = "    " + code_lines[i];
-                            if (i < code_lines.size() - 1) { // Not the last line of generated code
-                                line_to_add += " \\";
+                            // Output the macro definition line with line continuation
+                            output_buffer.push_back(expected_macro_start + " \\");
+
+                            // Split generated_cpp into lines and append with indentation and line continuation
+                            std::stringstream cpp_ss(generated_cpp);
+                            std::string cpp_line;
+                            std::vector<std::string> code_lines;
+                            while(std::getline(cpp_ss, cpp_line, '\n')) {
+                                code_lines.push_back(cpp_line);
                             }
-                            output_buffer.push_back(line_to_add);
+
+                            for(size_t i = 0; i < code_lines.size(); ++i) {
+                                std::string line_to_add = "    " + code_lines[i];
+                                if (i < code_lines.size() - 1) { // Not the last line of generated code
+                                    line_to_add += " \\";
+                                }
+                                output_buffer.push_back(line_to_add);
+                            }
                         }
-                    } else if (all_rules_parsed_ok && parsed_rules.empty() && !current_dsl_content.empty()){
-                        // DSL content was there but yielded no rules (e.g. all comments)
-                        // Or all rules failed parsing, but all_rules_parsed_ok wasn't set to false correctly
-                        std::cerr << "FSMgine Warning: No valid transition rules found for FSM '"
-                                  << current_fsm_definition_name << "'. Macro will be empty.\n";
-                        output_buffer.push_back(line); // Output the original empty macro line
-                    }
-                     else { // Parsing failed or no rules
+                    } else if (!generate_dot && !generate_mermaid) {
+                        if (all_rules_parsed_ok && parsed_rules.empty() && !current_dsl_content.empty()) {
+                            std::cerr << "FSMgine Warning: No valid transition rules found for FSM '"
+                                      << current_fsm_definition_name << "'. Macro will be empty.\n";
+                        }
                         output_buffer.push_back(line); // Output the original empty macro line
                     }
                     // Reset for the next potential FSM block
                     current_state = ParserState::SCANNING_FOR_DEFINITION;
                     current_dsl_content.clear();
                     current_fsm_definition_name.clear();
-                } else {
+                } else if (!generate_dot && !generate_mermaid) {
                     output_buffer.push_back(line); // Pass through
                     // If we encounter another FSM definition block before finding the macro,
                     // it's a bit of a state error or implies the previous macro was missed.
-                    // For V1, we assume a macro placeholder follows its definition block relatively soon.
                     if (line.find("/* FSMgine definition:") != std::string::npos) {
-                         std::cerr << "FSMgine Warning: New FSM definition started before finding macro placeholder for '"
-                                   << current_fsm_definition_name << "'. Previous DSL content discarded.\n";
+                        std::cerr << "FSMgine Warning: New FSM definition started before finding macro placeholder for '"
+                                  << current_fsm_definition_name << "'. Previous DSL content discarded.\n";
                         // Effectively reset and re-process this line as a new definition start
                         current_fsm_definition_name = extract_fsm_name(line);
                         current_dsl_content.clear();
                         current_state = ParserState::INSIDE_DEFINITION_BLOCK;
-                        // output_buffer already contains this line from the push_back above
                     }
                 }
                 break;
             }
         }
     }
-    
-    // After processing all input lines, write the buffered output
-    for (const auto& out_line : output_buffer) {
-        output << out_line << "\n";
+
+    // After processing all input lines, write the buffered output (only in C++ generation mode)
+    if (!generate_dot && !generate_mermaid) {
+        for (const auto& out_line : output_buffer) {
+            output << out_line << "\n";
+        }
     }
 
     // Check if we ended in a state expecting more input (e.g. unclosed definition block)
     if (current_state == ParserState::INSIDE_DEFINITION_BLOCK) {
         std::cerr << "FSMgine Warning: Input ended while inside an FSM definition block for '" << current_fsm_definition_name << "'.\n";
     } else if (current_state == ParserState::SCANNING_FOR_MACRO_PLACEHOLDER) {
-         std::cerr << "FSMgine Warning: Input ended while waiting for macro placeholder for FSM '" << current_fsm_definition_name << "'.\n";
+        std::cerr << "FSMgine Warning: Input ended while waiting for macro placeholder for FSM '" << current_fsm_definition_name << "'.\n";
     }
 
     return true; // For V1, always return true, errors are to stderr
