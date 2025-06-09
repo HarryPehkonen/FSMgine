@@ -1,120 +1,203 @@
 # FSMgine
-Finite State Machine Engine creates finite state machines via code generation
 
-## Getting Started
+A modern C++ library for building robust finite state machines with a fluent builder interface, thread-safety support, and memory-efficient string interning.
 
-FSMgine helps you create finite state machines in C++ through a simple DSL (Domain Specific Language). Here's a quick example:
+## Features
 
-```cpp
-/* FSMgine definition: MyStateMachine
-(IDLE PRED isReady ACTION doSetup READY)
-(READY PRED hasEvent ACTION processEvent IDLE)
-(READY ACTION enterError ERROR)
-*/
-#define FSM_MyStateMachine_transitions {}
-```
+- **Fluent Builder API**: Type-safe, self-documenting interface for FSM construction
+- **Thread Safety**: Optional multi-threaded support with compile-time flags
+- **Memory Efficient**: String interning reduces memory footprint and improves performance
+- **RAII Design**: Move-only semantics and clear ownership models
+- **Flexible Architecture**: No event loop management - integrates into existing applications
+- **Comprehensive Testing**: 34+ unit and integration tests
 
-### How it Works
-
-1. Define your states and transitions using the FSMgine DSL inside a comment block
-2. Each transition rule follows the format: `(FROM_STATE [PRED predicate]* [ACTION action]* TO_STATE)`
-3. FSMgine will generate the transition code for you
-
-### Example Implementation
-
-Here's a complete example showing how to use FSMgine:
+## Quick Start
 
 ```cpp
-#include <string>
-#include <vector>
-#include <functional>
-#include <iostream>
+#include "FSMgine/FSMgine.hpp"
+using namespace fsmgine;
 
-// Define your Transition struct
-struct Transition {
-    std::string_view from_state;
-    std::vector<std::function<bool()>> predicates;
-    std::vector<std::function<void()>> actions;
-    std::string_view to_state;
-};
+// Create an FSM
+FSM turnstile;
+bool coin_inserted = false;
+bool door_pushed = false;
 
-// Define your FSM class
-class MyStateMachine {
-public:
-    MyStateMachine(const std::string& initial_state) {
-        current_state_ = initial_state;
-        transitions_ = FSM_MyStateMachine_transitions;
-    }
+// Build with fluent interface
+turnstile.get_builder()
+    .onEnter("LOCKED", []() { std::cout << "🔒 Locked\n"; })
+    .onEnter("UNLOCKED", []() { std::cout << "🔓 Unlocked\n"; })
+    .from("LOCKED")
+    .predicate([&]() { return coin_inserted; })
+    .action([&]() { coin_inserted = false; })
+    .to("UNLOCKED")
+    .from("UNLOCKED")
+    .predicate([&]() { return door_pushed; })
+    .action([&]() { door_pushed = false; })
+    .to("LOCKED");
 
-    void step() {
-        for (const auto& rule : transitions_) {
-            if (rule.from_state == current_state_) {
-                bool all_preds_true = true;
-                for (const auto& pred : rule.predicates) {
-                    if (!pred()) {
-                        all_preds_true = false;
-                        break;
-                    }
-                }
-                if (all_preds_true) {
-                    for (const auto& action : rule.actions) {
-                        action();
-                    }
-                    current_state_ = rule.to_state;
-                    return;
-                }
-            }
-        }
-    }
-
-    // Predicates
-    bool isReady() { return ready_flag_; }
-    bool hasEvent() { return event_flag_; }
-
-    // Actions
-    void doSetup() { ready_flag_ = true; }
-    void processEvent() { event_flag_ = false; }
-    void enterError() { error_flag_ = true; }
-
-private:
-    std::string_view current_state_;
-    std::vector<Transition> transitions_;
-    bool ready_flag_ = false;
-    bool event_flag_ = false;
-    bool error_flag_ = false;
-};
-```
-
-### Usage
-
-```cpp
-int main() {
-    MyStateMachine fsm("IDLE");
-    fsm.step();  // Will check transitions from IDLE state
-    return 0;
-}
+// Run the FSM
+turnstile.setInitialState("LOCKED");
+coin_inserted = true;
+turnstile.step(); // Transitions to UNLOCKED
 ```
 
 ## Building
 
-To build FSMgine:
+### Requirements
+- C++17 or later
+- CMake 3.20+
+- Google Test (for testing)
+
+### Build Instructions
 
 ```bash
+# Basic build
 mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake ..
+make
+
+# With tests
+cmake .. -DGTEST_ROOT=/path/to/gtest  # if needed
+make
+./tests/FSMgine_tests
+
+# With examples
+cmake .. -DBUILD_EXAMPLES=ON
+make
+./turnstile_example
+
+# With multi-threading support
+cmake .. -DFSMGINE_MULTI_THREADED=ON
 make
 ```
 
-## Running
+## Architecture
 
-To run FSMgine:
+### Core Components
 
-```bash
-fsmgine < source_file.cpp > compiled_file.cpp
+- **StringInterner**: Singleton for string optimization and memory efficiency
+- **Transition**: Represents state transitions with predicates and actions  
+- **FSM**: Main state machine container with thread-safe operations
+- **FSMBuilder/TransitionBuilder**: Fluent interface for FSM construction
+
+### Threading Model
+
+FSMgine supports optional thread safety via the `FSMGINE_MULTI_THREADED` preprocessor flag:
+
+- **Read operations** (`step()`, `getCurrentState()`): Concurrent via `std::shared_mutex`
+- **Write operations** (`to()`, `onEnter()`, `onExit()`): Exclusive locks
+- **Single-threaded builds**: All locking overhead compiled out
+
+## Usage Patterns
+
+### Basic State Machine
+
+```cpp
+FSM fsm;
+fsm.get_builder()
+    .from("START")
+    .to("END");
+
+fsm.setInitialState("START");
+fsm.step(); // START -> END
 ```
 
-Then proceed to compile compiled_file.cpp with your favourite compiler, such as g++ or clang++.
+### Conditional Transitions
+
+```cpp
+bool condition = false;
+fsm.get_builder()
+    .from("WAITING")
+    .predicate([&]() { return condition; })
+    .to("READY");
+
+fsm.setInitialState("WAITING");
+fsm.step(); // No transition (condition false)
+
+condition = true;
+fsm.step(); // WAITING -> READY
+```
+
+### Actions and State Callbacks
+
+```cpp
+int counter = 0;
+
+fsm.get_builder()
+    .onEnter("ACTIVE", [&]() { std::cout << "Entering active state\n"; })
+    .onExit("ACTIVE", [&]() { std::cout << "Leaving active state\n"; })
+    .from("ACTIVE")
+    .action([&]() { counter++; })
+    .to("DONE");
+```
+
+### Complex Workflows
+
+See `examples/turnstile_example.cpp` and the integration tests for comprehensive examples including:
+- Turnstile state machine with error handling
+- Traffic light timing system  
+- Complex workflow with retry logic
+
+## Design Principles
+
+- **Ease of Use**: Fluent API prevents invalid construction sequences
+- **Safety**: RAII, move-only semantics, thread-safe operations
+- **Performance**: Zero-overhead single-threaded mode, string interning
+- **Flexibility**: No event loop constraints, flexible definition order
+
+## API Reference
+
+### FSM Class
+
+```cpp
+class FSM {
+    FSMBuilder get_builder();
+    void setInitialState(std::string_view state);
+    void setCurrentState(std::string_view state);
+    bool step(); // Returns true if transition occurred
+    std::string_view getCurrentState() const;
+};
+```
+
+### Builder Classes
+
+```cpp
+class FSMBuilder {
+    TransitionBuilder from(const std::string& state);
+    FSMBuilder& onEnter(const std::string& state, Action action);
+    FSMBuilder& onExit(const std::string& state, Action action);
+};
+
+class TransitionBuilder {
+    TransitionBuilder& predicate(Predicate pred);
+    TransitionBuilder& action(Action action);
+    void to(const std::string& state); // Terminal method
+};
+```
+
+## Testing
+
+Run the comprehensive test suite:
+
+```bash
+cd build
+make
+./tests/FSMgine_tests
+```
+
+The test suite includes:
+- Unit tests for all components
+- Integration tests with real-world scenarios  
+- Thread safety validation
+- Memory management verification
 
 ## License
 
-Please see the LICENSE file.
+This project is released into the public domain under the Unlicense. See LICENSE for details.
+
+## Contributing
+
+1. Follow existing code style and patterns
+2. Add tests for new functionality
+3. Ensure all tests pass
+4. Update documentation as needed
