@@ -18,14 +18,26 @@ if(FSMGINE_MULTI_THREADED)
 endif()
 
 # Create FSMgine library
-add_library(FSMgine STATIC
+add_library(FSMgine
     src/StringInterner.cpp
     src/Transition.cpp
     src/FSM.cpp
     src/FSMBuilder.cpp
 )
 
-target_include_directories(FSMgine PUBLIC include)
+# Set library properties
+set_target_properties(FSMgine PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+    EXPORT_NAME FSMgine
+    PUBLIC_HEADER "include/FSMgine/FSMgine.hpp"
+)
+
+target_include_directories(FSMgine
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
 
 if(FSMGINE_MULTI_THREADED)
     target_link_libraries(FSMgine PUBLIC Threads::Threads)
@@ -39,17 +51,20 @@ elseif(MSVC)
 endif()
 
 # Testing support
-enable_testing()
-find_package(GTest QUIET)
+option(BUILD_TESTING "Build tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+    find_package(GTest QUIET)
 
-if(GTest_FOUND)
-    add_subdirectory(tests)
-else()
-    message(STATUS "Google Test not found. Building simple test runner instead.")
-    # Simple test runner
-    add_executable(FSMgine_simple_tests tests/simple_test_runner.cpp)
-    target_link_libraries(FSMgine_simple_tests FSMgine)
-    add_test(NAME FSMgine_simple_tests COMMAND FSMgine_simple_tests)
+    if(GTest_FOUND)
+        add_subdirectory(tests)
+    else()
+        message(STATUS "Google Test not found. Building simple test runner instead.")
+        # Simple test runner
+        add_executable(FSMgine_simple_tests tests/simple_test_runner.cpp)
+        target_link_libraries(FSMgine_simple_tests FSMgine)
+        add_test(NAME FSMgine_simple_tests COMMAND FSMgine_simple_tests)
+    endif()
 endif()
 
 # Example executables (optional)
@@ -61,12 +76,45 @@ if(BUILD_EXAMPLES)
 endif()
 
 # Installation rules
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+# Install library and headers
 install(TARGETS FSMgine
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
+    EXPORT FSMgineTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 install(DIRECTORY include/
-    DESTINATION include
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.hpp"
+)
+
+# Install CMake package configuration files
+install(EXPORT FSMgineTargets
+    FILE FSMgineTargets.cmake
+    NAMESPACE FSMgine::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FSMgine
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/FSMgineConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FSMgineConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/FSMgineConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FSMgine
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/FSMgineConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/FSMgineConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FSMgine
 )

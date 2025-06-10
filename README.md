@@ -11,6 +11,118 @@ A modern C++ library for building robust finite state machines with a fluent bui
 - **Flexible Architecture**: No event loop management - integrates into existing applications
 - **Comprehensive Testing**: 34+ unit and integration tests
 
+## Installation
+
+### Option 1: Install from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/HarryPehkonen/FSMgine.git
+cd FSMgine
+
+# Create build directory
+mkdir build && cd build
+
+# Configure with CMake
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+
+# Build
+make
+
+# Install
+sudo make install
+```
+
+### Option 2: Install Locally
+
+If you don't want to install system-wide, you can install to a local directory:
+
+```bash
+# Clone and build as above, but specify a local install path
+cmake .. -DCMAKE_INSTALL_PREFIX=/path/to/local/install
+make
+make install
+```
+
+### Build Options
+
+When building FSMgine, you can customize it with these options:
+- `-DFSMGINE_MULTI_THREADED=ON` - Enable thread safety
+- `-DBUILD_TESTING=OFF` - Skip building tests
+- `-DBUILD_EXAMPLES=ON` - Build example programs
+
+## Using FSMgine in Your Project
+
+### Method 1: Using CMake's find_package
+
+1. Create a new project with the following structure:
+```
+your_project/
+├── CMakeLists.txt
+└── src/
+    └── main.cpp
+```
+
+2. Create a `CMakeLists.txt`:
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(your_project)
+
+# If you installed locally, specify the path
+# set(FSMgine_DIR "/path/to/local/install/lib/cmake/FSMgine")
+
+find_package(FSMgine REQUIRED)
+
+add_executable(your_project src/main.cpp)
+target_link_libraries(your_project PRIVATE FSMgine::FSMgine)
+```
+
+3. Create `src/main.cpp`:
+```cpp
+#include <FSMgine/FSMgine.hpp>
+#include <iostream>
+
+int main() {
+    fsmgine::FSM fsm;
+    
+    // Build your state machine
+    fsm.get_builder()
+        .from("START")
+        .to("END");
+    
+    fsm.setInitialState("START");
+    fsm.step();
+    
+    std::cout << "Current state: " << fsm.getCurrentState() << std::endl;
+    return 0;
+}
+```
+
+### Method 2: Using as a Subdirectory
+
+You can also include FSMgine directly in your project:
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(your_project)
+
+add_subdirectory(path/to/FSMgine)
+add_executable(your_project src/main.cpp)
+target_link_libraries(your_project PRIVATE FSMgine::FSMgine)
+```
+
+### Method 3: Using vcpkg (Coming Soon)
+
+```bash
+vcpkg install FSMgine
+```
+
+Then in your CMakeLists.txt:
+```cmake
+find_package(FSMgine CONFIG REQUIRED)
+target_link_libraries(your_project PRIVATE FSMgine::FSMgine)
+```
+
 ## Quick Start
 
 ```cpp

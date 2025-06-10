@@ -1,0 +1,11 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+if(@FSMGINE_MULTI_THREADED@)
+    find_dependency(Threads)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/FSMgineTargets.cmake")
+
+check_required_components(FSMgine) 
