@@ -18,11 +18,9 @@ if(FSMGINE_MULTI_THREADED)
 endif()
 
 # Create FSMgine library
+# FSMgine is now mostly header-only, but StringInterner has a .cpp file.
 add_library(FSMgine
     src/StringInterner.cpp
-    src/Transition.cpp
-    src/FSM.cpp
-    src/FSMBuilder.cpp
 )
 
 # Set library properties

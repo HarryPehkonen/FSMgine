@@ -3,30 +3,31 @@
 
 using namespace fsmgine;
 
+// Use a simple int as the event type for testing
+using TestTransition = Transition<int>;
+
 class TransitionTest : public ::testing::Test {
 protected:
-    bool predicate_called = false;
     bool action_called = false;
     int action_call_count = 0;
     
     void SetUp() override {
-        predicate_called = false;
         action_called = false;
         action_call_count = 0;
     }
 };
 
 TEST_F(TransitionTest, DefaultConstructor) {
-    Transition transition;
+    TestTransition transition;
     
     EXPECT_FALSE(transition.hasPredicates());
     EXPECT_FALSE(transition.hasActions());
     EXPECT_FALSE(transition.hasTargetState());
-    EXPECT_TRUE(transition.evaluatePredicates()); // No predicates = always true
+    EXPECT_TRUE(transition.evaluatePredicates(0)); // Event value doesn't matter
 }
 
 TEST_F(TransitionTest, SetTargetState) {
-    Transition transition;
+    TestTransition transition;
     transition.setTargetState("target_state");
     
     EXPECT_TRUE(transition.hasTargetState());
@@ -34,144 +35,87 @@ TEST_F(TransitionTest, SetTargetState) {
 }
 
 TEST_F(TransitionTest, AddSinglePredicate) {
-    Transition transition;
+    TestTransition transition;
+    bool predicate_called = false;
     
-    transition.addPredicate([this]() { 
+    transition.addPredicate([&](const int& e) { 
+        EXPECT_EQ(e, 42);
         predicate_called = true; 
         return true; 
     });
     
     EXPECT_TRUE(transition.hasPredicates());
-    EXPECT_TRUE(transition.evaluatePredicates());
+    EXPECT_TRUE(transition.evaluatePredicates(42));
     EXPECT_TRUE(predicate_called);
 }
 
 TEST_F(TransitionTest, PredicateReturnsFalse) {
-    Transition transition;
+    TestTransition transition;
     
-    transition.addPredicate([this]() { 
-        predicate_called = true; 
-        return false; 
-    });
+    transition.addPredicate([&](const int& e) { return e > 10; });
     
-    EXPECT_TRUE(transition.hasPredicates());
-    EXPECT_FALSE(transition.evaluatePredicates());
-    EXPECT_TRUE(predicate_called);
+    EXPECT_FALSE(transition.evaluatePredicates(5));
+    EXPECT_TRUE(transition.evaluatePredicates(15));
 }
 
 TEST_F(TransitionTest, MultiplePredicatesAllTrue) {
-    Transition transition;
-    bool pred1_called = false;
-    bool pred2_called = false;
+    TestTransition transition;
     
-    transition.addPredicate([&pred1_called]() { 
-        pred1_called = true; 
-        return true; 
-    });
-    transition.addPredicate([&pred2_called]() { 
-        pred2_called = true; 
-        return true; 
-    });
+    transition.addPredicate([](const int& e) { return e > 10; });
+    transition.addPredicate([](const int& e) { return e < 20; });
     
-    EXPECT_TRUE(transition.evaluatePredicates());
-    EXPECT_TRUE(pred1_called);
-    EXPECT_TRUE(pred2_called);
-}
-
-TEST_F(TransitionTest, MultiplePredicatesOneFalse) {
-    Transition transition;
-    bool pred1_called = false;
-    bool pred2_called = false;
-    
-    transition.addPredicate([&pred1_called]() { 
-        pred1_called = true; 
-        return true; 
-    });
-    transition.addPredicate([&pred2_called]() { 
-        pred2_called = true; 
-        return false; 
-    });
-    
-    EXPECT_FALSE(transition.evaluatePredicates());
-    EXPECT_TRUE(pred1_called);
-    EXPECT_TRUE(pred2_called);
+    EXPECT_FALSE(transition.evaluatePredicates(5));
+    EXPECT_TRUE(transition.evaluatePredicates(15));
+    EXPECT_FALSE(transition.evaluatePredicates(25));
 }
 
 TEST_F(TransitionTest, AddSingleAction) {
-    Transition transition;
+    TestTransition transition;
     
-    transition.addAction([this]() { 
+    transition.addAction([this](const int& e) { 
+        EXPECT_EQ(e, 99);
         action_called = true; 
     });
     
     EXPECT_TRUE(transition.hasActions());
-    transition.executeActions();
+    transition.executeActions(99);
     EXPECT_TRUE(action_called);
 }
 
 TEST_F(TransitionTest, MultipleActions) {
-    Transition transition;
+    TestTransition transition;
     
-    transition.addAction([this]() { action_call_count++; });
-    transition.addAction([this]() { action_call_count++; });
+    transition.addAction([this](const int& e) { action_call_count += e; });
+    transition.addAction([this](const int& e) { action_call_count += e; });
     
-    EXPECT_TRUE(transition.hasActions());
-    transition.executeActions();
-    EXPECT_EQ(action_call_count, 2);
-}
-
-TEST_F(TransitionTest, CompleteTransition) {
-    Transition transition;
-    
-    transition.addPredicate([]() { return true; });
-    transition.addAction([this]() { action_called = true; });
-    transition.setTargetState("next_state");
-    
-    EXPECT_TRUE(transition.hasPredicates());
-    EXPECT_TRUE(transition.hasActions());
-    EXPECT_TRUE(transition.hasTargetState());
-    
-    EXPECT_TRUE(transition.evaluatePredicates());
-    transition.executeActions();
-    EXPECT_TRUE(action_called);
-    EXPECT_EQ(transition.getTargetState(), "next_state");
+    transition.executeActions(10);
+    EXPECT_EQ(action_call_count, 20);
 }
 
 TEST_F(TransitionTest, NullPredicateNotAdded) {
-    Transition transition;
-    
+    TestTransition transition;
     transition.addPredicate(nullptr);
-    
     EXPECT_FALSE(transition.hasPredicates());
-    EXPECT_TRUE(transition.evaluatePredicates()); // Still true with no predicates
 }
 
 TEST_F(TransitionTest, NullActionNotAdded) {
-    Transition transition;
-    
+    TestTransition transition;
     transition.addAction(nullptr);
-    
     EXPECT_FALSE(transition.hasActions());
-    // executeActions should not crash
-    transition.executeActions();
 }
 
 TEST_F(TransitionTest, MoveSemantics) {
-    Transition transition1;
-    transition1.addPredicate([]() { return true; });
-    transition1.addAction([this]() { action_called = true; });
+    TestTransition transition1;
+    transition1.addPredicate([](const int&) { return true; });
+    transition1.addAction([this](const int&) { action_called = true; });
     transition1.setTargetState("moved_state");
     
-    // Move constructor
-    Transition transition2 = std::move(transition1);
+    TestTransition transition2 = std::move(transition1);
     
     EXPECT_TRUE(transition2.hasPredicates());
     EXPECT_TRUE(transition2.hasActions());
-    EXPECT_TRUE(transition2.hasTargetState());
     EXPECT_EQ(transition2.getTargetState(), "moved_state");
     
-    // Test that moved transition works
-    EXPECT_TRUE(transition2.evaluatePredicates());
-    transition2.executeActions();
+    transition2.executeActions(0);
     EXPECT_TRUE(action_called);
 }

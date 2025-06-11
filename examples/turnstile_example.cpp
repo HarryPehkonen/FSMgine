@@ -3,60 +3,52 @@
 
 using namespace fsmgine;
 
+// Define the events that can drive the turnstile FSM
+enum class TurnstileEvent {
+    COIN_INSERTED,
+    DOOR_PUSHED
+};
+
 int main() {
-    // Create a simple turnstile state machine
-    FSM turnstile;
-    
-    // Simulation state
-    bool coin_inserted = false;
-    bool door_pushed = false;
+    // Create a turnstile state machine that processes TurnstileEvent
+    FSM<TurnstileEvent> turnstile;
     
     // Build the turnstile FSM
     auto builder = turnstile.get_builder();
     
-    // Define state enter/exit actions
-    builder.onEnter("LOCKED", []() { 
+    // Define state enter actions. They can optionally use the event that caused the entry.
+    builder.onEnter("LOCKED", [](const auto&){ 
         std::cout << "🔒 Turnstile is LOCKED\n"; 
     });
     
-    builder.onEnter("UNLOCKED", []() { 
+    builder.onEnter("UNLOCKED", [](const auto&){ 
         std::cout << "🔓 Turnstile is UNLOCKED\n"; 
     });
     
-    builder.onEnter("ERROR", []() { 
+    builder.onEnter("ERROR", [](const auto&){ 
         std::cout << "🚨 ERROR: Tried to push without coin!\n"; 
     });
     
-    // Define transitions
+    // Define transitions based on events
     builder.from("LOCKED")
-           .predicate([&]() { return coin_inserted; })
-           .action([&]() { 
-               std::cout << "💰 Coin accepted!\n"; 
-               coin_inserted = false;
-           })
+           .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::COIN_INSERTED; })
+           .action([](const auto&) { std::cout << "💰 Coin accepted!\n"; })
            .to("UNLOCKED");
     
     builder.from("UNLOCKED")
-           .predicate([&]() { return door_pushed; })
-           .action([&]() { 
-               std::cout << "🚪 Door pushed, person passed through\n"; 
-               door_pushed = false;
-           })
+           .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::DOOR_PUSHED; })
+           .action([](const auto&) { std::cout << "🚪 Door pushed, person passed through\n"; })
            .to("LOCKED");
     
     // Error case: trying to push door when locked
     builder.from("LOCKED")
-           .predicate([&]() { return door_pushed; })
-           .action([&]() { door_pushed = false; })
+           .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::DOOR_PUSHED; })
            .to("ERROR");
     
     // Recovery from error
     builder.from("ERROR")
-           .predicate([&]() { return coin_inserted; })
-           .action([&]() { 
-               std::cout << "💰 Coin inserted, recovering from error\n"; 
-               coin_inserted = false;
-           })
+           .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::COIN_INSERTED; })
+           .action([](const auto&) { std::cout << "💰 Coin inserted, recovering from error\n"; })
            .to("UNLOCKED");
     
     // Start the FSM
@@ -65,34 +57,29 @@ int main() {
     std::cout << "=== FSMgine Turnstile Demo ===\n";
     std::cout << "Current state: " << turnstile.getCurrentState() << "\n\n";
     
-    // Simulate normal operation
+    // Simulate normal operation by processing events
     std::cout << "--- Normal Operation ---\n";
-    coin_inserted = true;
-    if (turnstile.step()) {
+    if (turnstile.process(TurnstileEvent::COIN_INSERTED)) {
         std::cout << "Current state: " << turnstile.getCurrentState() << "\n";
     }
     
-    door_pushed = true;
-    if (turnstile.step()) {
+    if (turnstile.process(TurnstileEvent::DOOR_PUSHED)) {
         std::cout << "Current state: " << turnstile.getCurrentState() << "\n";
     }
     
     // Simulate error case
     std::cout << "\n--- Error Case ---\n";
-    door_pushed = true;
-    if (turnstile.step()) {
+    if (turnstile.process(TurnstileEvent::DOOR_PUSHED)) {
         std::cout << "Current state: " << turnstile.getCurrentState() << "\n";
     }
     
     // Recover from error
     std::cout << "\n--- Recovery ---\n";
-    coin_inserted = true;
-    if (turnstile.step()) {
+    if (turnstile.process(TurnstileEvent::COIN_INSERTED)) {
         std::cout << "Current state: " << turnstile.getCurrentState() << "\n";
     }
     
-    door_pushed = true;
-    if (turnstile.step()) {
+    if (turnstile.process(TurnstileEvent::DOOR_PUSHED)) {
         std::cout << "Current state: " << turnstile.getCurrentState() << "\n";
     }
     

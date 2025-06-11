@@ -5,6 +5,9 @@
 
 using namespace fsmgine;
 
+// Use an event-less FSM (std::monostate) for these tests to ensure step() works.
+using TestFSM = FSM<>; // Default template argument is std::monostate
+
 class FSMTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -20,7 +23,7 @@ protected:
 };
 
 TEST_F(FSMTest, DefaultConstructor) {
-    FSM fsm;
+    TestFSM fsm;
     
     // Should throw when trying to get current state without setting initial state
     EXPECT_THROW(fsm.getCurrentState(), runtime_error);
@@ -28,7 +31,7 @@ TEST_F(FSMTest, DefaultConstructor) {
 }
 
 TEST_F(FSMTest, SimpleTransition) {
-    FSM fsm;
+    TestFSM fsm;
     
     // Build simple transition
     fsm.get_builder()
@@ -50,12 +53,12 @@ TEST_F(FSMTest, SimpleTransition) {
 }
 
 TEST_F(FSMTest, TransitionWithPredicate) {
-    FSM fsm;
+    TestFSM fsm;
     bool condition = false;
     
     fsm.get_builder()
         .from("WAITING")
-        .predicate([&condition]() { return condition; })
+        .predicate([&condition](const auto&) { return condition; })
         .to("READY");
     
     fsm.setInitialState("WAITING");
@@ -74,11 +77,11 @@ TEST_F(FSMTest, TransitionWithPredicate) {
 }
 
 TEST_F(FSMTest, TransitionWithAction) {
-    FSM fsm;
+    TestFSM fsm;
     
     fsm.get_builder()
         .from("START")
-        .action([this]() { action_call_count++; })
+        .action([this](const auto&) { action_call_count++; })
         .to("END");
     
     fsm.setInitialState("START");
@@ -91,16 +94,16 @@ TEST_F(FSMTest, TransitionWithAction) {
 }
 
 TEST_F(FSMTest, MultiplePredicatesAndActions) {
-    FSM fsm;
+    TestFSM fsm;
     bool cond1 = true;
     bool cond2 = true;
     
     fsm.get_builder()
         .from("START")
-        .predicate([&cond1]() { return cond1; })
-        .predicate([&cond2]() { return cond2; })
-        .action([this]() { action_call_count++; })
-        .action([this]() { action_call_count++; })
+        .predicate([&cond1](const auto&) { return cond1; })
+        .predicate([&cond2](const auto&) { return cond2; })
+        .action([this](const auto&) { action_call_count++; })
+        .action([this](const auto&) { action_call_count++; })
         .to("END");
     
     fsm.setInitialState("START");
@@ -113,7 +116,7 @@ TEST_F(FSMTest, MultiplePredicatesAndActions) {
 }
 
 TEST_F(FSMTest, MultipleTransitionsFirstValidWins) {
-    FSM fsm;
+    TestFSM fsm;
     bool cond1 = false;
     bool cond2 = true;
     
@@ -121,14 +124,14 @@ TEST_F(FSMTest, MultipleTransitionsFirstValidWins) {
     
     // First transition (will fail)
     builder.from("START")
-        .predicate([&cond1]() { return cond1; })
-        .action([this]() { action_call_count = 10; })
+        .predicate([&cond1](const auto&) { return cond1; })
+        .action([this](const auto&) { action_call_count = 10; })
         .to("BRANCH1");
     
     // Second transition (will succeed)
     builder.from("START")
-        .predicate([&cond2]() { return cond2; })
-        .action([this]() { action_call_count = 20; })
+        .predicate([&cond2](const auto&) { return cond2; })
+        .action([this](const auto&) { action_call_count = 20; })
         .to("BRANCH2");
     
     fsm.setInitialState("START");
@@ -140,26 +143,27 @@ TEST_F(FSMTest, MultipleTransitionsFirstValidWins) {
 }
 
 TEST_F(FSMTest, OnEnterActions) {
-    FSM fsm;
+    TestFSM fsm;
     
     fsm.get_builder()
-        .onEnter("TARGET", [this]() { on_enter_called = true; })
+        .onEnter("TARGET", [this](const auto&) { on_enter_called = true; })
         .from("START")
         .to("TARGET");
     
     EXPECT_FALSE(on_enter_called);
     fsm.setInitialState("START");
-    EXPECT_FALSE(on_enter_called); // Not called for START
+    EXPECT_TRUE(on_enter_called); // Called for START
+    on_enter_called = false; // reset
     
     fsm.step();
     EXPECT_TRUE(on_enter_called); // Called when entering TARGET
 }
 
 TEST_F(FSMTest, OnExitActions) {
-    FSM fsm;
+    TestFSM fsm;
     
     fsm.get_builder()
-        .onExit("START", [this]() { on_exit_called = true; })
+        .onExit("START", [this](const auto&) { on_exit_called = true; })
         .from("START")
         .to("END");
     
@@ -171,13 +175,13 @@ TEST_F(FSMTest, OnExitActions) {
 }
 
 TEST_F(FSMTest, SelfTransitionNoStateChangeActions) {
-    FSM fsm;
+    TestFSM fsm;
     
     fsm.get_builder()
-        .onEnter("LOOP", [this]() { on_enter_called = true; })
-        .onExit("LOOP", [this]() { on_exit_called = true; })
+        .onEnter("LOOP", [this](const auto&) { on_enter_called = true; })
+        .onExit("LOOP", [this](const auto&) { on_exit_called = true; })
         .from("LOOP")
-        .action([this]() { action_call_count++; })
+        .action([this](const auto&) { action_call_count++; })
         .to("LOOP");
     
     fsm.setInitialState("LOOP");
@@ -193,12 +197,12 @@ TEST_F(FSMTest, SelfTransitionNoStateChangeActions) {
 }
 
 TEST_F(FSMTest, SetCurrentStateExecutesActions) {
-    FSM fsm;
+    TestFSM fsm;
     
     fsm.get_builder()
-        .onEnter("STATE1", [this]() { action_call_count = 1; })
-        .onExit("STATE1", [this]() { action_call_count = 2; })
-        .onEnter("STATE2", [this]() { action_call_count = 3; })
+        .onEnter("STATE1", [this](const auto&) { action_call_count = 1; })
+        .onExit("STATE1", [this](const auto&) { action_call_count = 2; })
+        .onEnter("STATE2", [this](const auto&) { action_call_count = 3; })
         .from("STATE1")
         .to("STATE2");
     
@@ -210,7 +214,7 @@ TEST_F(FSMTest, SetCurrentStateExecutesActions) {
 }
 
 TEST_F(FSMTest, ErrorHandling) {
-    FSM fsm;
+    TestFSM fsm;
     
     // Cannot set initial state to undefined state
     EXPECT_THROW(fsm.setInitialState("UNDEFINED"), invalid_argument);
@@ -224,15 +228,15 @@ TEST_F(FSMTest, ErrorHandling) {
 }
 
 TEST_F(FSMTest, FluentBuilderInterface) {
-    FSM fsm;
+    TestFSM fsm;
     
     // Test fluent interface chaining
     fsm.get_builder()
-        .onEnter("START", [this]() { action_call_count++; })
-        .onExit("START", [this]() { action_call_count++; })
+        .onEnter("START", [this](const auto&) { action_call_count++; })
+        .onExit("START", [this](const auto&) { action_call_count++; })
         .from("START")
-        .predicate([]() { return true; })
-        .action([this]() { action_call_count++; })
+        .predicate([](const auto&) { return true; })
+        .action([this](const auto&) { action_call_count++; })
         .to("END");
     
     fsm.setInitialState("START");
@@ -243,16 +247,16 @@ TEST_F(FSMTest, FluentBuilderInterface) {
 }
 
 TEST_F(FSMTest, MoveSemantics) {
-    FSM fsm1;
+    TestFSM fsm1;
     fsm1.get_builder().from("A").to("B");
     fsm1.setInitialState("A");
     
     // Move constructor
-    FSM fsm2 = std::move(fsm1);
+    TestFSM fsm2 = std::move(fsm1);
     EXPECT_EQ(fsm2.getCurrentState(), "A");
     
     // Move assignment
-    FSM fsm3;
+    TestFSM fsm3;
     fsm3 = std::move(fsm2);
     EXPECT_EQ(fsm3.getCurrentState(), "A");
     

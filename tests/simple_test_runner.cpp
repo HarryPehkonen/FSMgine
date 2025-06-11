@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cassert>
+#include <variant>
 #include "FSMgine/StringInterner.hpp"
 #include "FSMgine/Transition.hpp"
 
@@ -33,33 +34,35 @@ void test_string_interner() {
 void test_transition() {
     std::cout << "Testing Transition..." << std::endl;
     
-    Transition transition;
+    Transition<int> transition;
     
     // Test default state
     assert(!transition.hasPredicates());
     assert(!transition.hasActions());
     assert(!transition.hasTargetState());
-    assert(transition.evaluatePredicates()); // No predicates = always true
+    assert(transition.evaluatePredicates(0)); // No predicates = always true
     
     // Test predicates
     bool predicate_called = false;
-    transition.addPredicate([&predicate_called]() { 
+    transition.addPredicate([&predicate_called](const int& e) { 
+        assert(e == 42);
         predicate_called = true; 
         return true; 
     });
     
     assert(transition.hasPredicates());
-    assert(transition.evaluatePredicates());
+    assert(transition.evaluatePredicates(42));
     assert(predicate_called);
     
     // Test actions
     bool action_called = false;
-    transition.addAction([&action_called]() { 
+    transition.addAction([&action_called](const int& e) { 
+        assert(e == 100);
         action_called = true; 
     });
     
     assert(transition.hasActions());
-    transition.executeActions();
+    transition.executeActions(100);
     assert(action_called);
     
     // Test target state

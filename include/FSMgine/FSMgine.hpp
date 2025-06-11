@@ -1,5 +1,7 @@
 #pragma once
 
+#include <variant>
+
 // Main FSMgine header - includes everything you need
 #include "FSMgine/StringInterner.hpp"
 #include "FSMgine/Transition.hpp"
