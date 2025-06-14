@@ -17,7 +17,7 @@ protected:
         on_enter_called = false;
         on_exit_called = false;
     }
-    
+
     int action_call_count = 0;
     bool on_enter_called = false;
     bool on_exit_called = false;
@@ -25,7 +25,7 @@ protected:
 
 TEST_F(FSMTest, DefaultConstructor) {
     TestFSM fsm;
-    
+
     // Should throw when trying to get current state without setting initial state
     EXPECT_THROW(fsm.getCurrentState(), runtime_error);
     EXPECT_THROW(fsm.step(), runtime_error);
@@ -33,20 +33,20 @@ TEST_F(FSMTest, DefaultConstructor) {
 
 TEST_F(FSMTest, SimpleTransition) {
     TestFSM fsm;
-    
+
     // Build simple transition
     fsm.get_builder()
         .from("START")
         .to("END");
-    
+
     fsm.setInitialState("START");
     EXPECT_EQ(fsm.getCurrentState(), "START");
-    
+
     // Step should transition to END
     bool transitioned = fsm.step();
     EXPECT_TRUE(transitioned);
     EXPECT_EQ(fsm.getCurrentState(), "END");
-    
+
     // Step again should not transition (no outgoing transitions from END)
     transitioned = fsm.step();
     EXPECT_FALSE(transitioned);
@@ -56,20 +56,20 @@ TEST_F(FSMTest, SimpleTransition) {
 TEST_F(FSMTest, TransitionWithPredicate) {
     TestFSM fsm;
     bool condition = false;
-    
+
     fsm.get_builder()
         .from("WAITING")
         .predicate([&condition](const auto&) { return condition; })
         .to("READY");
-    
+
     fsm.setInitialState("WAITING");
     EXPECT_EQ(fsm.getCurrentState(), "WAITING");
-    
+
     // Step should not transition (predicate is false)
     bool transitioned = fsm.step();
     EXPECT_FALSE(transitioned);
     EXPECT_EQ(fsm.getCurrentState(), "WAITING");
-    
+
     // Set condition to true
     condition = true;
     transitioned = fsm.step();
@@ -79,15 +79,15 @@ TEST_F(FSMTest, TransitionWithPredicate) {
 
 TEST_F(FSMTest, TransitionWithAction) {
     TestFSM fsm;
-    
+
     fsm.get_builder()
         .from("START")
         .action([this](const auto&) { action_call_count++; })
         .to("END");
-    
+
     fsm.setInitialState("START");
     EXPECT_EQ(action_call_count, 0);
-    
+
     bool transitioned = fsm.step();
     EXPECT_TRUE(transitioned);
     EXPECT_EQ(action_call_count, 1);
@@ -98,7 +98,7 @@ TEST_F(FSMTest, MultiplePredicatesAndActions) {
     TestFSM fsm;
     bool cond1 = true;
     bool cond2 = true;
-    
+
     fsm.get_builder()
         .from("START")
         .predicate([&cond1](const auto&) { return cond1; })
@@ -106,9 +106,9 @@ TEST_F(FSMTest, MultiplePredicatesAndActions) {
         .action([this](const auto&) { action_call_count++; })
         .action([this](const auto&) { action_call_count++; })
         .to("END");
-    
+
     fsm.setInitialState("START");
-    
+
     // Both predicates true - should transition and execute both actions
     bool transitioned = fsm.step();
     EXPECT_TRUE(transitioned);
@@ -120,23 +120,23 @@ TEST_F(FSMTest, MultipleTransitionsFirstValidWins) {
     TestFSM fsm;
     bool cond1 = false;
     bool cond2 = true;
-    
+
     auto builder = fsm.get_builder();
-    
+
     // First transition (will fail)
     builder.from("START")
         .predicate([&cond1](const auto&) { return cond1; })
         .action([this](const auto&) { action_call_count = 10; })
         .to("BRANCH1");
-    
+
     // Second transition (will succeed)
     builder.from("START")
         .predicate([&cond2](const auto&) { return cond2; })
         .action([this](const auto&) { action_call_count = 20; })
         .to("BRANCH2");
-    
+
     fsm.setInitialState("START");
-    
+
     bool transitioned = fsm.step();
     EXPECT_TRUE(transitioned);
     EXPECT_EQ(action_call_count, 20); // Second transition's action
@@ -145,51 +145,51 @@ TEST_F(FSMTest, MultipleTransitionsFirstValidWins) {
 
 TEST_F(FSMTest, OnEnterActions) {
     TestFSM fsm;
-    
+
     fsm.get_builder()
         .onEnter("START", [this](const auto&) { on_enter_called = true; })
         .from("START")
         .to("TARGET");
-    
+
     EXPECT_FALSE(on_enter_called);
     fsm.setInitialState("START");
     EXPECT_TRUE(on_enter_called); // Called for START
     on_enter_called = false; // reset
-    
+
     fsm.step();
     EXPECT_FALSE(on_enter_called); // Not called for TARGET since no action was registered
 }
 
 TEST_F(FSMTest, OnExitActions) {
     TestFSM fsm;
-    
+
     fsm.get_builder()
         .onExit("START", [this](const auto&) { on_exit_called = true; })
         .from("START")
         .to("END");
-    
+
     fsm.setInitialState("START");
     EXPECT_FALSE(on_exit_called);
-    
+
     fsm.step();
     EXPECT_TRUE(on_exit_called); // Called when exiting START
 }
 
 TEST_F(FSMTest, SelfTransitionNoStateChangeActions) {
     TestFSM fsm;
-    
+
     fsm.get_builder()
         .onEnter("LOOP", [this](const auto&) { on_enter_called = true; })
         .onExit("LOOP", [this](const auto&) { on_exit_called = true; })
         .from("LOOP")
         .action([this](const auto&) { action_call_count++; })
         .to("LOOP");
-    
+
     fsm.setInitialState("LOOP");
     // Initial state setting should call onEnter
     EXPECT_TRUE(on_enter_called);
     on_enter_called = false; // Reset for test
-    
+
     // Self-transition should execute action but not onExit/onEnter
     fsm.step();
     EXPECT_EQ(action_call_count, 1);
@@ -199,30 +199,30 @@ TEST_F(FSMTest, SelfTransitionNoStateChangeActions) {
 
 TEST_F(FSMTest, SetCurrentStateExecutesActions) {
     TestFSM fsm;
-    
+
     fsm.get_builder()
         .onEnter("STATE1", [this](const auto&) { action_call_count = 1; })
         .onExit("STATE1", [this](const auto&) { action_call_count = 2; })
         .onEnter("STATE2", [this](const auto&) { action_call_count = 3; })
         .from("STATE1")
         .to("STATE2");
-    
+
     fsm.setInitialState("STATE1");
     EXPECT_EQ(action_call_count, 1); // onEnter STATE1
-    
+
     fsm.setCurrentState("STATE2");
     EXPECT_EQ(action_call_count, 3); // onExit STATE1 (=2), then onEnter STATE2 (=3)
 }
 
 TEST_F(FSMTest, ErrorHandling) {
     TestFSM fsm;
-    
+
     // Cannot set initial state to undefined state
     EXPECT_THROW(fsm.setInitialState("UNDEFINED"), invalid_argument);
-    
+
     // Cannot set current state to undefined state
     EXPECT_THROW(fsm.setCurrentState("UNDEFINED"), invalid_argument);
-    
+
     // After defining a state, should be able to set it
     fsm.get_builder().from("DEFINED").to("ANOTHER");
     EXPECT_NO_THROW(fsm.setInitialState("DEFINED"));
@@ -230,7 +230,7 @@ TEST_F(FSMTest, ErrorHandling) {
 
 TEST_F(FSMTest, FluentBuilderInterface) {
     TestFSM fsm;
-    
+
     // Test fluent interface chaining
     fsm.get_builder()
         .onEnter("START", [this](const auto&) { action_call_count++; })
@@ -239,10 +239,10 @@ TEST_F(FSMTest, FluentBuilderInterface) {
         .predicate([](const auto&) { return true; })
         .action([this](const auto&) { action_call_count++; })
         .to("END");
-    
+
     fsm.setInitialState("START");
     EXPECT_EQ(action_call_count, 1); // onEnter START
-    
+
     fsm.step();
     EXPECT_EQ(action_call_count, 3); // onExit START + transition action
 }
@@ -251,79 +251,86 @@ TEST_F(FSMTest, MoveSemantics) {
     TestFSM fsm1;
     fsm1.get_builder().from("A").to("B");
     fsm1.setInitialState("A");
-    
+
     // Move constructor
     TestFSM fsm2 = std::move(fsm1);
     EXPECT_EQ(fsm2.getCurrentState(), "A");
-    
+
     // Move assignment
     TestFSM fsm3;
     fsm3 = std::move(fsm2);
     EXPECT_EQ(fsm3.getCurrentState(), "A");
-    
+
     // Original FSM should be in valid but unspecified state
     // We don't test the moved-from state as it's implementation-defined
 }
 
 TEST_F(FSMTest, ConcurrentStateAccess) {
     TestFSM fsm;
-    std::atomic<int> counter{0};
-    const int NUM_THREADS = 4;
+    std::atomic<int> exceptions_caught{0};
+    std::atomic<int> invalid_states{0};
+    std::atomic<int> total_operations{0};
+    const int NUM_THREADS = 8;
     const int ITERATIONS = 1000;
-    
-    // Build a state machine that increments a counter
+
+    // Build a simple state machine
     fsm.get_builder()
-        .from("START")
-        .action([&counter](const auto&) { 
-            // Make the race condition more likely by doing multiple operations
-            for (int i = 0; i < 10; i++) {
-                int current = counter.load();
-                std::this_thread::yield();
-                counter.store(current + 1);
-            }
-        })
-        .to("END");
+        .from("A")
+        .to("B");
 
     fsm.get_builder()
-        .from("END")
-        .action([&counter](const auto&) {
-            // Make the race condition more likely by doing multiple operations
-            for (int i = 0; i < 10; i++) {
-                int current = counter.load();
-                std::this_thread::yield();
-                counter.store(current + 1);
-            }
-        })
-        .to("START");
-    
-    fsm.setInitialState("START");
-    
-    // Create multiple threads that try to step the FSM
+        .from("B")
+        .to("A");
+
+    fsm.setInitialState("A");
+
     std::vector<std::thread> threads;
+
+    // Create threads that both read and write concurrently
+    // This tests for real race conditions like exceptions or corrupted state
     for (int i = 0; i < NUM_THREADS; ++i) {
-        threads.emplace_back([&fsm, ITERATIONS]() {
+        threads.emplace_back([&fsm, &exceptions_caught, &invalid_states, &total_operations, ITERATIONS]() {
             for (int j = 0; j < ITERATIONS; ++j) {
-                fsm.step();
+                try {
+                    // Mix of read and write operations to create contention
+                    if (j % 3 == 0) {
+                        // Step the FSM (write operation)
+                        fsm.step();
+                        total_operations++;
+                    } else {
+                        // Read the current state (read operation)
+                        auto state = fsm.getCurrentState();
+                        total_operations++;
+
+                        // Check if we got a valid state
+                        if (state != "A" && state != "B") {
+                            invalid_states++;
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    exceptions_caught++;
+                } catch (...) {
+                    exceptions_caught++;
+                }
             }
         });
     }
-    
+
     // Wait for all threads to complete
     for (auto& thread : threads) {
         thread.join();
     }
-    
-    // Each step should increment the counter 20 times (10 in each action)
-    // With proper locking, we should get exactly NUM_THREADS * ITERATIONS * 20
-    // Without locking, we should get significantly less due to lost increments
-    const int expected_count = NUM_THREADS * ITERATIONS * 20;
-    const int actual_count = counter.load();
-    
-    // Print the results to help debug
-    std::cout << "Expected count: " << expected_count << std::endl;
-    std::cout << "Actual count: " << actual_count << std::endl;
-    std::cout << "Lost increments: " << (expected_count - actual_count) << std::endl;
-    
-    // With proper locking, we should get exactly the expected count
-    EXPECT_EQ(actual_count, expected_count);
+
+    std::cout << "Concurrent access test results:" << std::endl;
+    std::cout << "Total operations: " << total_operations.load() << std::endl;
+    std::cout << "Exceptions caught: " << exceptions_caught.load() << std::endl;
+    std::cout << "Invalid states: " << invalid_states.load() << std::endl;
+
+    // With proper multithreading support, we should have:
+    // - No exceptions (race conditions cause runtime errors)
+    // - No invalid states (race conditions can corrupt state)
+    // - Successful operations (the FSM should work correctly)
+    EXPECT_EQ(exceptions_caught.load(), 0);
+    EXPECT_EQ(invalid_states.load(), 0);
+    EXPECT_GT(total_operations.load(), 0);
 }

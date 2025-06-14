@@ -26,6 +26,7 @@ public:
     bool evaluatePredicates(const TEvent& event) const;
     void executeActions(const TEvent& event) const;
     std::string_view getTargetState() const;
+    const std::vector<Action>& getActions() const;
     
     bool hasPredicates() const;
     bool hasActions() const;
@@ -82,6 +83,11 @@ void Transition<TEvent>::executeActions(const TEvent& event) const {
 template<typename TEvent>
 std::string_view Transition<TEvent>::getTargetState() const {
     return target_state_;
+}
+
+template<typename TEvent>
+const std::vector<typename Transition<TEvent>::Action>& Transition<TEvent>::getActions() const {
+    return actions_;
 }
 
 template<typename TEvent>

@@ -10,7 +10,7 @@
 #include "FSMgine/StringInterner.hpp"
 
 #ifdef FSMGINE_MULTI_THREADED
-#include <shared_mutex>
+#include <mutex>
 #endif
 
 namespace fsmgine {
@@ -60,7 +60,7 @@ public:
     // Move operations
     FSM(FSM&& other) noexcept {
 #ifdef FSMGINE_MULTI_THREADED
-        std::unique_lock<std::shared_mutex> lock(other.mutex_);
+        std::unique_lock<std::mutex> lock(other.mutex_);
 #endif
         states_ = std::move(other.states_);
         current_state_ = other.current_state_;
@@ -70,8 +70,8 @@ public:
     FSM& operator=(FSM&& other) noexcept {
         if (this != &other) {
 #ifdef FSMGINE_MULTI_THREADED
-            std::unique_lock<std::shared_mutex> lock(mutex_);
-            std::unique_lock<std::shared_mutex> other_lock(other.mutex_);
+            std::unique_lock<std::mutex> lock(mutex_);
+            std::unique_lock<std::mutex> other_lock(other.mutex_);
 #endif
             states_ = std::move(other.states_);
             current_state_ = other.current_state_;
@@ -106,7 +106,7 @@ private:
     bool has_initial_state_ = false;
     
 #ifdef FSMGINE_MULTI_THREADED
-    mutable std::shared_mutex mutex_;
+    mutable std::mutex mutex_;
 #endif
 
     // Helper methods
@@ -125,7 +125,7 @@ FSMBuilder<TEvent> FSM<TEvent>::get_builder() {
 template<typename TEvent>
 void FSM<TEvent>::setInitialState(std::string_view state) {
 #ifdef FSMGINE_MULTI_THREADED
-    std::unique_lock<std::shared_mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
     auto interned_state = StringInterner::instance().intern(state);
@@ -145,7 +145,7 @@ void FSM<TEvent>::setInitialState(std::string_view state) {
 template<typename TEvent>
 void FSM<TEvent>::setCurrentState(std::string_view state) {
 #ifdef FSMGINE_MULTI_THREADED
-    std::unique_lock<std::shared_mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
     auto interned_state = StringInterner::instance().intern(state);
@@ -168,7 +168,7 @@ void FSM<TEvent>::setCurrentState(std::string_view state) {
 template<typename TEvent>
 bool FSM<TEvent>::process(const TEvent& event) {
 #ifdef FSMGINE_MULTI_THREADED
-    std::unique_lock<std::shared_mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
     if (!has_initial_state_) {
@@ -211,7 +211,7 @@ bool FSM<TEvent>::process(const TEvent& event) {
 template<typename TEvent>
 std::string_view FSM<TEvent>::getCurrentState() const {
 #ifdef FSMGINE_MULTI_THREADED
-    std::shared_lock<std::shared_mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
     if (!has_initial_state_) {
@@ -224,7 +224,7 @@ std::string_view FSM<TEvent>::getCurrentState() const {
 template<typename TEvent>
 void FSM<TEvent>::addTransition(std::string_view from_state, Transition<TEvent> transition) {
 #ifdef FSMGINE_MULTI_THREADED
-    std::unique_lock<std::shared_mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
     auto interned_from_state = StringInterner::instance().intern(from_state);
@@ -242,7 +242,7 @@ void FSM<TEvent>::addTransition(std::string_view from_state, Transition<TEvent> 
 template<typename TEvent>
 void FSM<TEvent>::addOnEnterAction(std::string_view state, Action action) {
 #ifdef FSMGINE_MULTI_THREADED
-    std::unique_lock<std::shared_mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
     auto interned_state = StringInterner::instance().intern(state);
@@ -256,7 +256,7 @@ void FSM<TEvent>::addOnEnterAction(std::string_view state, Action action) {
 template<typename TEvent>
 void FSM<TEvent>::addOnExitAction(std::string_view state, Action action) {
 #ifdef FSMGINE_MULTI_THREADED
-    std::unique_lock<std::shared_mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
     auto interned_state = StringInterner::instance().intern(state);
