@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(FSMgine VERSION 1.0.0 LANGUAGES CXX)
+project(FSMgine VERSION 1.0.1 LANGUAGES CXX)
 
 # Set C++ standard to C++17 for string_view support
 set(CMAKE_CXX_STANDARD 17)
@@ -62,6 +62,18 @@ if(BUILD_TESTING)
         add_executable(FSMgine_simple_tests tests/simple_test_runner.cpp)
         target_link_libraries(FSMgine_simple_tests FSMgine)
         add_test(NAME FSMgine_simple_tests COMMAND FSMgine_simple_tests)
+    endif()
+endif()
+
+# Benchmarking support
+option(BUILD_BENCHMARKS "Build benchmarks" OFF)
+if(BUILD_BENCHMARKS)
+    add_subdirectory(benchmarks)
+    find_package(benchmark QUIET)
+    if(NOT benchmark_FOUND)
+        message(STATUS "Google Benchmark not found. Simple timer benchmark will be built instead.")
+        message(STATUS "For full benchmark suite, install: sudo apt-get install libbenchmark-dev (Ubuntu/Debian)")
+        message(STATUS "Or build from source: https://github.com/google/benchmark")
     endif()
 endif()
 

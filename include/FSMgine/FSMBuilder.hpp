@@ -73,7 +73,9 @@ TransitionBuilder<TEvent>& TransitionBuilder<TEvent>::action(Action action) {
 
 template<typename TEvent>
 void TransitionBuilder<TEvent>::to(const std::string& state) {
-    auto interned_state = StringInterner::instance().intern(state);
+    // Optimization: Cache StringInterner reference
+    auto& interner = StringInterner::instance();
+    auto interned_state = interner.intern(state);
     transition_.setTargetState(interned_state);
     fsm_.addTransition(from_state_, std::move(transition_));
 }
@@ -85,20 +87,26 @@ FSMBuilder<TEvent>::FSMBuilder(FSM<TEvent>& fsm) : fsm_(fsm) {
 
 template<typename TEvent>
 TransitionBuilder<TEvent> FSMBuilder<TEvent>::from(const std::string& state) {
-    auto interned_state = StringInterner::instance().intern(state);
+    // Optimization: Cache StringInterner reference
+    auto& interner = StringInterner::instance();
+    auto interned_state = interner.intern(state);
     return TransitionBuilder<TEvent>(fsm_, interned_state);
 }
 
 template<typename TEvent>
 FSMBuilder<TEvent>& FSMBuilder<TEvent>::onEnter(const std::string& state, Action action) {
-    auto interned_state = StringInterner::instance().intern(state);
+    // Optimization: Cache StringInterner reference
+    auto& interner = StringInterner::instance();
+    auto interned_state = interner.intern(state);
     fsm_.addOnEnterAction(interned_state, std::move(action));
     return *this;
 }
 
 template<typename TEvent>
 FSMBuilder<TEvent>& FSMBuilder<TEvent>::onExit(const std::string& state, Action action) {
-    auto interned_state = StringInterner::instance().intern(state);
+    // Optimization: Cache StringInterner reference
+    auto& interner = StringInterner::instance();
+    auto interned_state = interner.intern(state);
     fsm_.addOnExitAction(interned_state, std::move(action));
     return *this;
 }

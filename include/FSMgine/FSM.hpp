@@ -128,18 +128,27 @@ void FSM<TEvent>::setInitialState(std::string_view state) {
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
-    auto interned_state = StringInterner::instance().intern(state);
+    // Optimization 1: Cache StringInterner reference
+    auto& interner = StringInterner::instance();
+    auto interned_state = interner.intern(state);
     
-    if (states_.find(interned_state) == states_.end()) {
-        throw invalid_argument("Cannot set initial state to undefined state: " + std::string(state));
+    // Optimization 2: Single map lookup instead of redundant find
+    auto it = states_.find(interned_state);
+    if (it == states_.end()) {
+        // Optimization 3: Optimized exception string construction
+        std::string error_msg;
+        error_msg.reserve(50 + state.size());
+        error_msg.append("Cannot set initial state to undefined state: ");
+        error_msg.append(state);
+        throw invalid_argument(error_msg);
     }
     
     current_state_ = interned_state;
     has_initial_state_ = true;
     
-    // For initial state, we don't have a causing event.
-    // We pass a default-constructed event.
-    executeOnEnterActions(current_state_, TEvent{});
+    // Optimization 4: Static dummy event to avoid repeated object construction
+    static const TEvent dummy_event{};
+    executeOnEnterActions(current_state_, dummy_event);
 }
 
 template<typename TEvent>
@@ -148,13 +157,23 @@ void FSM<TEvent>::setCurrentState(std::string_view state) {
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
-    auto interned_state = StringInterner::instance().intern(state);
+    // Optimization 1: Cache StringInterner reference
+    auto& interner = StringInterner::instance();
+    auto interned_state = interner.intern(state);
     
-    if (states_.find(interned_state) == states_.end()) {
-        throw invalid_argument("Cannot set current state to undefined state: " + std::string(state));
+    // Optimization 2: Single map lookup instead of redundant find
+    auto it = states_.find(interned_state);
+    if (it == states_.end()) {
+        // Optimization 3: Optimized exception string construction
+        std::string error_msg;
+        error_msg.reserve(50 + state.size());
+        error_msg.append("Cannot set current state to undefined state: ");
+        error_msg.append(state);
+        throw invalid_argument(error_msg);
     }
     
-    TEvent dummy_event{}; // Dummy event for state change actions
+    // Optimization 4: Static dummy event to avoid repeated object construction
+    static const TEvent dummy_event{};
     if (has_initial_state_ && current_state_ != interned_state) {
         executeOnExitActions(current_state_, dummy_event);
     }
@@ -189,8 +208,16 @@ bool FSM<TEvent>::process(const TEvent& event) {
             if (target_state.empty()) {
                 throw runtime_error("Transition has no target state");
             }
-            if (states_.find(target_state) == states_.end()) {
-                throw runtime_error("Target state not found: " + std::string(target_state));
+            
+            // Optimization 1: Combine target state validation with lookup needed later
+            auto target_it = states_.find(target_state);
+            if (target_it == states_.end()) {
+                // Optimization 2: Optimized exception string construction
+                std::string error_msg;
+                error_msg.reserve(25 + target_state.size());
+                error_msg.append("Target state not found: ");
+                error_msg.append(target_state);
+                throw runtime_error(error_msg);
             }
             
             transition.executeActions(event);
@@ -227,12 +254,14 @@ void FSM<TEvent>::addTransition(std::string_view from_state, Transition<TEvent> 
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
-    auto interned_from_state = StringInterner::instance().intern(from_state);
+    // Optimization 1: Cache StringInterner reference to avoid repeated singleton calls
+    auto& interner = StringInterner::instance();
+    auto interned_from_state = interner.intern(from_state);
     auto& state_data = getOrCreateState(interned_from_state);
     
     auto target_state = transition.getTargetState();
     if (!target_state.empty()) {
-        auto interned_target_state = StringInterner::instance().intern(target_state);
+        auto interned_target_state = interner.intern(target_state);
         getOrCreateState(interned_target_state);
     }
     
@@ -245,7 +274,9 @@ void FSM<TEvent>::addOnEnterAction(std::string_view state, Action action) {
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
-    auto interned_state = StringInterner::instance().intern(state);
+    // Optimization 1: Cache StringInterner reference
+    auto& interner = StringInterner::instance();
+    auto interned_state = interner.intern(state);
     auto& state_data = getOrCreateState(interned_state);
     
     if (action) {
@@ -259,7 +290,9 @@ void FSM<TEvent>::addOnExitAction(std::string_view state, Action action) {
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
     
-    auto interned_state = StringInterner::instance().intern(state);
+    // Optimization 1: Cache StringInterner reference
+    auto& interner = StringInterner::instance();
+    auto interned_state = interner.intern(state);
     auto& state_data = getOrCreateState(interned_state);
     
     if (action) {
