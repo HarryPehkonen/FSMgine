@@ -53,11 +53,32 @@ private:
 public:
     FSM() = default;
     
-    // Move-only semantics
+    // Copy operations are deleted
     FSM(const FSM&) = delete;
     FSM& operator=(const FSM&) = delete;
-    FSM(FSM&&) = default;
-    FSM& operator=(FSM&&) = default;
+
+    // Move operations
+    FSM(FSM&& other) noexcept {
+#ifdef FSMGINE_MULTI_THREADED
+        std::unique_lock<std::shared_mutex> lock(other.mutex_);
+#endif
+        states_ = std::move(other.states_);
+        current_state_ = other.current_state_;
+        has_initial_state_ = other.has_initial_state_;
+    }
+
+    FSM& operator=(FSM&& other) noexcept {
+        if (this != &other) {
+#ifdef FSMGINE_MULTI_THREADED
+            std::unique_lock<std::shared_mutex> lock(mutex_);
+            std::unique_lock<std::shared_mutex> other_lock(other.mutex_);
+#endif
+            states_ = std::move(other.states_);
+            current_state_ = other.current_state_;
+            has_initial_state_ = other.has_initial_state_;
+        }
+        return *this;
+    }
     
     FSMBuilder<TEvent> get_builder();
     
@@ -147,7 +168,7 @@ void FSM<TEvent>::setCurrentState(std::string_view state) {
 template<typename TEvent>
 bool FSM<TEvent>::process(const TEvent& event) {
 #ifdef FSMGINE_MULTI_THREADED
-    std::shared_lock<std::shared_mutex> lock(mutex_);
+    std::unique_lock<std::shared_mutex> lock(mutex_);
 #endif
     
     if (!has_initial_state_) {
@@ -176,10 +197,6 @@ bool FSM<TEvent>::process(const TEvent& event) {
             
             if (current_state_ != target_state) {
                 executeOnExitActions(current_state_, event);
-#ifdef FSMGINE_MULTI_THREADED
-                lock.unlock();
-                std::unique_lock<std::shared_mutex> unique_lock(mutex_);
-#endif
                 current_state_ = target_state;
                 executeOnEnterActions(current_state_, event);
             }
