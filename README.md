@@ -1,6 +1,6 @@
 # FSMgine
 
-A modern C++ library for building robust finite state machines with a fluent builder interface, thread-safety support, and memory-efficient string interning.
+A modern C++ library for building robust finite state machines with a fluent builder interface, thread-safety support, and memory-efficient string interning.  This library was written with much support from several AI.
 
 ## Features
 
