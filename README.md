@@ -30,11 +30,15 @@ sudo make install
 
 ## Quick Start
 
+The simplest way to use FSMgine is with an event-less FSM, where state transitions are controlled by external variables.
+
 ```cpp
 #include "FSMgine/FSMgine.hpp"
+#include <iostream>
+
 using namespace fsmgine;
 
-// Create an FSM
+// Create an event-less FSM
 FSM turnstile;
 bool coin_inserted = false;
 bool door_pushed = false;
@@ -56,52 +60,113 @@ turnstile.get_builder()
 
 // Run the FSM
 turnstile.setInitialState("LOCKED");
+
+// Simulate external events changing the state
 coin_inserted = true;
 turnstile.step(); // Transitions to UNLOCKED
+
+door_pushed = true;
+turnstile.step(); // Transitions back to LOCKED
+```
+
+## Quick Start (Event-Driven)
+
+For a more robust and scalable design, you can define specific events to drive the FSM. This avoids managing external state variables and is the recommended approach for most applications.
+
+```cpp
+#include "FSMgine/FSMgine.hpp"
+#include <iostream>
+
+using namespace fsmgine;
+
+// 1. Define events that can drive the FSM
+enum class TurnstileEvent { COIN_INSERTED, DOOR_PUSHED };
+
+int main() {
+    // 2. Create an FSM that handles these events
+    FSM<TurnstileEvent> turnstile;
+
+    // 3. Build the FSM using predicates that check the event
+    turnstile.get_builder()
+        .onEnter("LOCKED", [](const auto&){ std::cout << "🔒 Locked\n"; })
+        .onEnter("UNLOCKED", [](const auto&){ std::cout << "🔓 Unlocked\n"; });
+
+    turnstile.get_builder()
+        .from("LOCKED")
+        .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::COIN_INSERTED; })
+        .to("UNLOCKED");
+
+    turnstile.get_builder()
+        .from("UNLOCKED")
+        .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::DOOR_PUSHED; })
+        .to("LOCKED");
+
+    // 4. Run the FSM by processing events
+    turnstile.setInitialState("LOCKED");
+    turnstile.process(TurnstileEvent::COIN_INSERTED); // Transitions to UNLOCKED
+    turnstile.process(TurnstileEvent::DOOR_PUSHED);   // Transitions back to LOCKED
+}
+```
+
+## Usage Patterns
+
+### Encapsulating the FSM in a Class
+
+For larger applications, it's best practice to encapsulate the FSM and its related state within a class. This provides a clean public API and hides implementation details.
+
+```cpp
+class Turnstile {
+public:
+    Turnstile() {
+        // Lambdas can capture `this` to access member variables
+        fsm_.get_builder()
+            .from("LOCKED")
+            .predicate([this](const auto&) { return coin_inserted_; })
+            .action([this](const auto&) { coin_inserted_ = false; })
+            .to("UNLOCKED");
+
+        fsm_.get_builder()
+            .from("UNLOCKED")
+            .predicate([this](const auto&) { return door_pushed_; })
+            .action([this](const auto&) { door_pushed_ = false; })
+            .to("LOCKED");
+
+        fsm_.setInitialState("LOCKED");
+    }
+
+    // Public methods control the FSM's inputs
+    void insertCoin() { coin_inserted_ = true; }
+    void pushDoor() { door_pushed_ = true; }
+
+    // The main loop calls step() to run the logic
+    void update() { fsm_.step(); }
+
+private:
+    FSM<> fsm_;
+    bool coin_inserted_ = false;
+    bool door_pushed_ = false;
+};
 ```
 
 ## Example Use Cases
 
+These examples demonstrate how to apply FSMgine to solve common problems. They illustrate patterns for managing state and logic within the FSM's actions and predicates.
+
 ### 1. Resource Pool Management
-The `resource_pool_example.cpp` demonstrates a thread-safe resource pool with states for managing available resources:
-
-```cpp
-class ResourcePool {
-    FSM<ResourceEvent> fsm;
-    std::atomic<int> available_resources;
-
-    // States: IDLE, BUSY, EMPTY
-    // Transitions handle resource acquisition and release
-    // Thread-safe operations with atomic counters
-};
-```
+Demonstrates a thread-safe resource pool.
+- **Pattern:** The FSM models the state of the pool (`IDLE`, `BUSY`, `EMPTY`). FSM actions modify an `std::atomic<int>` counter for available resources. This shows how to use the FSM's built-in locking (via `-DFSMGINE_MULTI_THREADED=ON`) in combination with atomic variables to manage concurrent access safely.
 
 ### 2. Protocol Parser
-The `protocol_parser.cpp` shows how to build a state machine for parsing network protocols:
-
-```cpp
-// States: WAITING_HEADER, READING_PAYLOAD, VALIDATING
-// Handles protocol parsing with error recovery
-// Demonstrates complex state transitions
-```
+Shows how to build a state machine for parsing a simple network protocol string.
+- **Pattern:** The FSM transitions character by character through states like `WAITING_HEADER`, `READING_PAYLOAD`, and `VALIDATING`. Actions append characters to buffer strings (`current_command`, `current_param`). This pattern is ideal for stream processing and validation tasks.
 
 ### 3. Calculator Implementation
-The `calculator.cpp` example implements a calculator using a state machine:
-
-```cpp
-// States: START, NUMBER, OPERATOR, RESULT
-// Handles mathematical expressions
-// Shows how to maintain context between states
-```
+Implements a calculator using two FSMs: one for tokenizing the input string and another for parsing and evaluating the expression.
+- **Pattern:** Shows a more advanced, two-stage FSM design. The tokenizer FSM produces a stream of `Token` objects, which are then fed as events into the parser FSM. Actions in the parser manipulate stacks for values and operators, demonstrating how to maintain complex context between states.
 
 ### 4. Parentheses Checker
-A simple but effective example in `parentheses_checker.cpp`:
-
-```cpp
-// States: BALANCED, UNBALANCED
-// Validates nested parentheses
-// Demonstrates minimal but complete FSM usage
-```
+A simple but effective example that validates balanced parentheses in a string.
+- **Pattern:** An FSM processes the input character by character. An `onEnter` action pushes opening parentheses onto a `std::stack`, while other transitions pop and validate closing parentheses. This is a minimal but complete example of using an FSM for validation logic.
 
 ## Integration
 
