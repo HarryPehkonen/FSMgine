@@ -10,3 +10,8 @@
 
 // Convenience namespace alias
 namespace fsm = fsmgine;
+
+// Type alias for event-less FSMs
+namespace fsmgine {
+    using EventlessFSM = FSM<>;
+}

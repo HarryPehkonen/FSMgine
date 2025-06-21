@@ -10,6 +10,13 @@
 
 namespace fsmgine {
 
+/**
+ * StringInterner provides memory-efficient string storage for state names.
+ * By interning strings, we:
+ * - Enable fast pointer-based string comparisons
+ * - Reduce memory usage when the same state names are used multiple times
+ * - Ensure string_view safety throughout the FSM lifetime
+ */
 class StringInterner {
 public:
     static StringInterner& instance();

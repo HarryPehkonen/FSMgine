@@ -19,15 +19,23 @@ namespace fsmgine {
 template<typename TEvent>
 class FSMBuilder;
 
-// Custom exceptions
-class invalid_argument : public std::invalid_argument {
+// FSM-specific exceptions
+class FSMStateNotFoundError : public std::runtime_error {
 public:
-    using std::invalid_argument::invalid_argument;
+    explicit FSMStateNotFoundError(const std::string& state) 
+        : std::runtime_error("FSM state not found: " + state) {}
 };
 
-class runtime_error : public std::runtime_error {
+class FSMNotInitializedError : public std::runtime_error {
 public:
-    using std::runtime_error::runtime_error;
+    FSMNotInitializedError() 
+        : std::runtime_error("FSM has not been initialized with a state") {}
+};
+
+class FSMInvalidStateError : public std::invalid_argument {
+public:
+    explicit FSMInvalidStateError(const std::string& message)
+        : std::invalid_argument(message) {}
 };
 
 template<typename TEvent = std::monostate>
@@ -80,20 +88,22 @@ public:
         return *this;
     }
     
+    // Builder access
     FSMBuilder<TEvent> get_builder();
     
+    // State management
     void setInitialState(std::string_view state);
     void setCurrentState(std::string_view state);
+    std::string_view getCurrentState() const;
     
+    // Event processing
     bool process(const TEvent& event);
     
-    // Convenience for event-less FSMs to preserve `step()`
-    bool step() {
-        static_assert(std::is_same_v<TEvent, std::monostate>, "step() can only be used with event-less FSMs (FSM<> or FSM<std::monostate>).");
+    // Convenience for event-less FSMs
+    bool process() {
+        static_assert(std::is_same_v<TEvent, std::monostate>, "process() can only be used with event-less FSMs (FSM<> or FSM<std::monostate>).");
         return process(std::monostate{});
     }
-
-    std::string_view getCurrentState() const;
     
     // Internal methods for builder
     void addTransition(std::string_view from_state, Transition<TEvent> transition);
@@ -140,7 +150,7 @@ void FSM<TEvent>::setInitialState(std::string_view state) {
         error_msg.reserve(50 + state.size());
         error_msg.append("Cannot set initial state to undefined state: ");
         error_msg.append(state);
-        throw invalid_argument(error_msg);
+        throw FSMInvalidStateError(error_msg);
     }
     
     current_state_ = interned_state;
@@ -169,7 +179,7 @@ void FSM<TEvent>::setCurrentState(std::string_view state) {
         error_msg.reserve(50 + state.size());
         error_msg.append("Cannot set current state to undefined state: ");
         error_msg.append(state);
-        throw invalid_argument(error_msg);
+        throw FSMInvalidStateError(error_msg);
     }
     
     // Optimization 4: Static dummy event to avoid repeated object construction
@@ -191,33 +201,28 @@ bool FSM<TEvent>::process(const TEvent& event) {
 #endif
     
     if (!has_initial_state_) {
-        throw runtime_error("Cannot process event in FSM without setting initial state");
+        throw FSMNotInitializedError();
     }
     
     auto it = states_.find(current_state_);
     if (it == states_.end()) {
-        throw runtime_error("Current state not found in FSM");
+        throw FSMStateNotFoundError(std::string(current_state_));
     }
     
     const auto& state_data = it->second;
     
     for (const auto& transition : state_data.transitions) {
-        if (transition.evaluatePredicates(event)) {
+        if (transition.predicatesPass(event)) {
             auto target_state = transition.getTargetState();
             
             if (target_state.empty()) {
-                throw runtime_error("Transition has no target state");
+                throw FSMInvalidStateError("Transition has no target state");
             }
             
             // Optimization 1: Combine target state validation with lookup needed later
             auto target_it = states_.find(target_state);
             if (target_it == states_.end()) {
-                // Optimization 2: Optimized exception string construction
-                std::string error_msg;
-                error_msg.reserve(25 + target_state.size());
-                error_msg.append("Target state not found: ");
-                error_msg.append(target_state);
-                throw runtime_error(error_msg);
+                throw FSMStateNotFoundError(std::string(target_state));
             }
             
             transition.executeActions(event);
@@ -242,7 +247,7 @@ std::string_view FSM<TEvent>::getCurrentState() const {
 #endif
     
     if (!has_initial_state_) {
-        throw runtime_error("FSM has no current state - initial state not set");
+        throw FSMNotInitializedError();
     }
     
     return current_state_;

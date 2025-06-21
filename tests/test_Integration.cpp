@@ -92,16 +92,16 @@ TEST_F(IntegrationTest, TrafficLightStateMachine) {
     
     for (int cycle = 0; cycle < 2; ++cycle) {
         EXPECT_EQ(traffic_light.getCurrentState(), "RED");
-        for (timer = 0; timer < 3; ++timer) EXPECT_FALSE(traffic_light.step());
-        EXPECT_TRUE(traffic_light.step());
+        for (timer = 0; timer < 3; ++timer) EXPECT_FALSE(traffic_light.process());
+        EXPECT_TRUE(traffic_light.process());
         
         EXPECT_EQ(traffic_light.getCurrentState(), "GREEN");
-        for (timer = 0; timer < 5; ++timer) EXPECT_FALSE(traffic_light.step());
-        EXPECT_TRUE(traffic_light.step());
+        for (timer = 0; timer < 5; ++timer) EXPECT_FALSE(traffic_light.process());
+        EXPECT_TRUE(traffic_light.process());
         
         EXPECT_EQ(traffic_light.getCurrentState(), "YELLOW");
-        for (timer = 0; timer < 2; ++timer) EXPECT_FALSE(traffic_light.step());
-        EXPECT_TRUE(traffic_light.step());
+        for (timer = 0; timer < 2; ++timer) EXPECT_FALSE(traffic_light.process());
+        EXPECT_TRUE(traffic_light.process());
     }
     
     std::vector<std::string> expected = {"red_on", "green_on", "yellow_on", "red_on", "green_on", "yellow_on", "red_on"};
@@ -136,11 +136,11 @@ TEST_F(IntegrationTest, ComplexWorkflowStateMachine) {
     
     // Successful workflow
     task_ready = true;
-    workflow.step(); // -> PROCESSING
+    workflow.process(); // -> PROCESSING
     task_completed = true;
-    workflow.step(); // -> WAITING_APPROVAL
+    workflow.process(); // -> WAITING_APPROVAL
     approval_received = true;
-    workflow.step(); // -> COMPLETED
+    workflow.process(); // -> COMPLETED
     EXPECT_EQ(workflow.getCurrentState(), "COMPLETED");
 
     // Reset for error scenario
@@ -150,14 +150,14 @@ TEST_F(IntegrationTest, ComplexWorkflowStateMachine) {
     
     // Test retry workflow
     task_ready = true;
-    workflow.step(); // -> PROCESSING
+    workflow.process(); // -> PROCESSING
     for (int i = 0; i < max_retries; ++i) {
         error_occurred = true;
-        workflow.step(); // -> RETRY
-        workflow.step(); // -> PROCESSING
+        workflow.process(); // -> RETRY
+        workflow.process(); // -> PROCESSING
     }
     error_occurred = true;
-    workflow.step(); // -> FAILED
+    workflow.process(); // -> FAILED
     
     EXPECT_EQ(workflow.getCurrentState(), "FAILED");
     EXPECT_EQ(retry_count, 3);

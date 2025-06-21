@@ -6,7 +6,7 @@
 
 using namespace fsmgine;
 
-// Use an event-less FSM (std::monostate) for these tests to ensure step() works.
+// Use an event-less FSM (std::monostate) for these tests to ensure process() works.
 using TestFSM = FSM<>; // Default template argument is std::monostate
 
 class FSMTest : public ::testing::Test {
@@ -27,8 +27,8 @@ TEST_F(FSMTest, DefaultConstructor) {
     TestFSM fsm;
 
     // Should throw when trying to get current state without setting initial state
-    EXPECT_THROW(fsm.getCurrentState(), runtime_error);
-    EXPECT_THROW(fsm.step(), runtime_error);
+    EXPECT_THROW(fsm.getCurrentState(), FSMNotInitializedError);
+    EXPECT_THROW(fsm.process(), FSMNotInitializedError);
 }
 
 TEST_F(FSMTest, SimpleTransition) {
@@ -42,13 +42,13 @@ TEST_F(FSMTest, SimpleTransition) {
     fsm.setInitialState("START");
     EXPECT_EQ(fsm.getCurrentState(), "START");
 
-    // Step should transition to END
-    bool transitioned = fsm.step();
+    // Process should transition to END
+    bool transitioned = fsm.process();
     EXPECT_TRUE(transitioned);
     EXPECT_EQ(fsm.getCurrentState(), "END");
 
-    // Step again should not transition (no outgoing transitions from END)
-    transitioned = fsm.step();
+    // Process again should not transition (no outgoing transitions from END)
+    transitioned = fsm.process();
     EXPECT_FALSE(transitioned);
     EXPECT_EQ(fsm.getCurrentState(), "END");
 }
@@ -65,14 +65,14 @@ TEST_F(FSMTest, TransitionWithPredicate) {
     fsm.setInitialState("WAITING");
     EXPECT_EQ(fsm.getCurrentState(), "WAITING");
 
-    // Step should not transition (predicate is false)
-    bool transitioned = fsm.step();
+    // Process should not transition (predicate is false)
+    bool transitioned = fsm.process();
     EXPECT_FALSE(transitioned);
     EXPECT_EQ(fsm.getCurrentState(), "WAITING");
 
     // Set condition to true
     condition = true;
-    transitioned = fsm.step();
+    transitioned = fsm.process();
     EXPECT_TRUE(transitioned);
     EXPECT_EQ(fsm.getCurrentState(), "READY");
 }
@@ -88,7 +88,7 @@ TEST_F(FSMTest, TransitionWithAction) {
     fsm.setInitialState("START");
     EXPECT_EQ(action_call_count, 0);
 
-    bool transitioned = fsm.step();
+    bool transitioned = fsm.process();
     EXPECT_TRUE(transitioned);
     EXPECT_EQ(action_call_count, 1);
     EXPECT_EQ(fsm.getCurrentState(), "END");
@@ -110,7 +110,7 @@ TEST_F(FSMTest, MultiplePredicatesAndActions) {
     fsm.setInitialState("START");
 
     // Both predicates true - should transition and execute both actions
-    bool transitioned = fsm.step();
+    bool transitioned = fsm.process();
     EXPECT_TRUE(transitioned);
     EXPECT_EQ(action_call_count, 2);
     EXPECT_EQ(fsm.getCurrentState(), "END");
@@ -137,7 +137,7 @@ TEST_F(FSMTest, MultipleTransitionsFirstValidWins) {
 
     fsm.setInitialState("START");
 
-    bool transitioned = fsm.step();
+    bool transitioned = fsm.process();
     EXPECT_TRUE(transitioned);
     EXPECT_EQ(action_call_count, 20); // Second transition's action
     EXPECT_EQ(fsm.getCurrentState(), "BRANCH2");
@@ -156,7 +156,7 @@ TEST_F(FSMTest, OnEnterActions) {
     EXPECT_TRUE(on_enter_called); // Called for START
     on_enter_called = false; // reset
 
-    fsm.step();
+    fsm.process();
     EXPECT_FALSE(on_enter_called); // Not called for TARGET since no action was registered
 }
 
@@ -171,7 +171,7 @@ TEST_F(FSMTest, OnExitActions) {
     fsm.setInitialState("START");
     EXPECT_FALSE(on_exit_called);
 
-    fsm.step();
+    fsm.process();
     EXPECT_TRUE(on_exit_called); // Called when exiting START
 }
 
@@ -191,7 +191,7 @@ TEST_F(FSMTest, SelfTransitionNoStateChangeActions) {
     on_enter_called = false; // Reset for test
 
     // Self-transition should execute action but not onExit/onEnter
-    fsm.step();
+    fsm.process();
     EXPECT_EQ(action_call_count, 1);
     EXPECT_FALSE(on_exit_called);
     EXPECT_FALSE(on_enter_called);
@@ -218,10 +218,10 @@ TEST_F(FSMTest, ErrorHandling) {
     TestFSM fsm;
 
     // Cannot set initial state to undefined state
-    EXPECT_THROW(fsm.setInitialState("UNDEFINED"), invalid_argument);
+    EXPECT_THROW(fsm.setInitialState("UNDEFINED"), FSMInvalidStateError);
 
     // Cannot set current state to undefined state
-    EXPECT_THROW(fsm.setCurrentState("UNDEFINED"), invalid_argument);
+    EXPECT_THROW(fsm.setCurrentState("UNDEFINED"), FSMInvalidStateError);
 
     // After defining a state, should be able to set it
     fsm.get_builder().from("DEFINED").to("ANOTHER");
@@ -243,7 +243,7 @@ TEST_F(FSMTest, FluentBuilderInterface) {
     fsm.setInitialState("START");
     EXPECT_EQ(action_call_count, 1); // onEnter START
 
-    fsm.step();
+    fsm.process();
     EXPECT_EQ(action_call_count, 3); // onExit START + transition action
 }
 
@@ -294,8 +294,8 @@ TEST_F(FSMTest, ConcurrentStateAccess) {
                 try {
                     // Mix of read and write operations to create contention
                     if (j % 3 == 0) {
-                        // Step the FSM (write operation)
-                        fsm.step();
+                        // Process the FSM (write operation)
+                        fsm.process();
                         total_operations++;
                     } else {
                         // Read the current state (read operation)

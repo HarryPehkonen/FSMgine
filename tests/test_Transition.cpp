@@ -23,7 +23,7 @@ TEST_F(TransitionTest, DefaultConstructor) {
     EXPECT_FALSE(transition.hasPredicates());
     EXPECT_FALSE(transition.hasActions());
     EXPECT_FALSE(transition.hasTargetState());
-    EXPECT_TRUE(transition.evaluatePredicates(0)); // Event value doesn't matter
+    EXPECT_TRUE(transition.predicatesPass(0)); // Event value doesn't matter
 }
 
 TEST_F(TransitionTest, SetTargetState) {
@@ -45,7 +45,7 @@ TEST_F(TransitionTest, AddSinglePredicate) {
     });
     
     EXPECT_TRUE(transition.hasPredicates());
-    EXPECT_TRUE(transition.evaluatePredicates(42));
+    EXPECT_TRUE(transition.predicatesPass(42));
     EXPECT_TRUE(predicate_called);
 }
 
@@ -54,8 +54,8 @@ TEST_F(TransitionTest, PredicateReturnsFalse) {
     
     transition.addPredicate([&](const int& e) { return e > 10; });
     
-    EXPECT_FALSE(transition.evaluatePredicates(5));
-    EXPECT_TRUE(transition.evaluatePredicates(15));
+    EXPECT_FALSE(transition.predicatesPass(5));
+    EXPECT_TRUE(transition.predicatesPass(15));
 }
 
 TEST_F(TransitionTest, MultiplePredicatesAllTrue) {
@@ -64,9 +64,9 @@ TEST_F(TransitionTest, MultiplePredicatesAllTrue) {
     transition.addPredicate([](const int& e) { return e > 10; });
     transition.addPredicate([](const int& e) { return e < 20; });
     
-    EXPECT_FALSE(transition.evaluatePredicates(5));
-    EXPECT_TRUE(transition.evaluatePredicates(15));
-    EXPECT_FALSE(transition.evaluatePredicates(25));
+    EXPECT_FALSE(transition.predicatesPass(5));
+    EXPECT_TRUE(transition.predicatesPass(15));
+    EXPECT_FALSE(transition.predicatesPass(25));
 }
 
 TEST_F(TransitionTest, AddSingleAction) {

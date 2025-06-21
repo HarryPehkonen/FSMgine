@@ -23,7 +23,7 @@ public:
     void addAction(Action action);
     void setTargetState(std::string_view state);
     
-    bool evaluatePredicates(const TEvent& event) const;
+    bool predicatesPass(const TEvent& event) const;
     void executeActions(const TEvent& event) const;
     std::string_view getTargetState() const;
     const std::vector<Action>& getActions() const;
@@ -60,7 +60,7 @@ void Transition<TEvent>::setTargetState(std::string_view state) {
 }
 
 template<typename TEvent>
-bool Transition<TEvent>::evaluatePredicates(const TEvent& event) const {
+bool Transition<TEvent>::predicatesPass(const TEvent& event) const {
     if (predicates_.empty()) {
         return true;
     }

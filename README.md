@@ -45,17 +45,17 @@ bool door_pushed = false;
 
 // Build with fluent interface
 turnstile.get_builder()
-    .onEnter("LOCKED", []() { std::cout << "🔒 Locked\n"; })
-    .onEnter("UNLOCKED", []() { std::cout << "🔓 Unlocked\n"; })
+    .onEnter("LOCKED", [](const std::monostate& event) { std::cout << "🔒 Locked\n"; })
+    .onEnter("UNLOCKED", [](const std::monostate& event) { std::cout << "🔓 Unlocked\n"; })
     .from("LOCKED")
-    .predicate([&]() { return coin_inserted; })
-    .action([&]() { coin_inserted = false; })
+    .predicate([&](const std::monostate& event) { return coin_inserted; })
+    .action([&](const std::monostate& event) { coin_inserted = false; })
     .to("UNLOCKED");
 
 turnstile.get_builder()
     .from("UNLOCKED")
-    .predicate([&]() { return door_pushed; })
-    .action([&]() { door_pushed = false; })
+    .predicate([&](const std::monostate& event) { return door_pushed; })
+    .action([&](const std::monostate& event) { door_pushed = false; })
     .to("LOCKED");
 
 // Run the FSM
@@ -63,10 +63,10 @@ turnstile.setInitialState("LOCKED");
 
 // Simulate external events changing the state
 coin_inserted = true;
-turnstile.step(); // Transitions to UNLOCKED
+turnstile.process(); // Transitions to UNLOCKED
 
 door_pushed = true;
-turnstile.step(); // Transitions back to LOCKED
+turnstile.process(); // Transitions back to LOCKED
 ```
 
 ## Quick Start (Event-Driven)
@@ -88,8 +88,8 @@ int main() {
 
     // 3. Build the FSM using predicates that check the event
     turnstile.get_builder()
-        .onEnter("LOCKED", [](const auto&){ std::cout << "🔒 Locked\n"; })
-        .onEnter("UNLOCKED", [](const auto&){ std::cout << "🔓 Unlocked\n"; });
+        .onEnter("LOCKED", [](const TurnstileEvent& triggeringEvent){ std::cout << "🔒 Locked\n"; })
+        .onEnter("UNLOCKED", [](const TurnstileEvent& triggeringEvent){ std::cout << "🔓 Unlocked\n"; });
 
     turnstile.get_builder()
         .from("LOCKED")
@@ -121,14 +121,14 @@ public:
         // Lambdas can capture `this` to access member variables
         fsm_.get_builder()
             .from("LOCKED")
-            .predicate([this](const auto&) { return coin_inserted_; })
-            .action([this](const auto&) { coin_inserted_ = false; })
+            .predicate([this](const std::monostate& event) { return coin_inserted_; })
+            .action([this](const std::monostate& event) { coin_inserted_ = false; })
             .to("UNLOCKED");
 
         fsm_.get_builder()
             .from("UNLOCKED")
-            .predicate([this](const auto&) { return door_pushed_; })
-            .action([this](const auto&) { door_pushed_ = false; })
+            .predicate([this](const std::monostate& event) { return door_pushed_; })
+            .action([this](const std::monostate& event) { door_pushed_ = false; })
             .to("LOCKED");
 
         fsm_.setInitialState("LOCKED");
@@ -138,8 +138,8 @@ public:
     void insertCoin() { coin_inserted_ = true; }
     void pushDoor() { door_pushed_ = true; }
 
-    // The main loop calls step() to run the logic
-    void update() { fsm_.step(); }
+    // The main loop calls process() to run the logic
+    void update() { fsm_.process(); }
 
 private:
     FSM<> fsm_;
@@ -147,6 +147,14 @@ private:
     bool door_pushed_ = false;
 };
 ```
+
+## State Management
+
+FSMgine provides two methods for setting the current state:
+
+- **`setInitialState(state)`**: Use this for first-time FSM initialization. It sets the current state and executes any `onEnter` actions for that state. This should be called once after building your FSM to establish the starting state.
+
+- **`setCurrentState(state)`**: Use this for runtime state changes when you need to forcibly change the state outside of normal transitions. It executes `onExit` actions for the current state (if any) and `onEnter` actions for the new state. This is useful for reset functionality or error recovery scenarios.
 
 ## Example Use Cases
 
