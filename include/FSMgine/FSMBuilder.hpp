@@ -36,7 +36,10 @@ namespace fsmgine {
 template<typename TEvent>
 class TransitionBuilder {
 public:
+    /// @brief Type alias for transition guard predicates
     using Predicate = typename FSM<TEvent>::Predicate;
+    
+    /// @brief Type alias for transition actions
     using Action = typename FSM<TEvent>::Action;
 
     /// @brief Constructs a transition builder for a specific source state
@@ -46,7 +49,11 @@ public:
     
     TransitionBuilder(const TransitionBuilder&) = delete;
     TransitionBuilder& operator=(const TransitionBuilder&) = delete;
+    
+    /// @brief Move constructor (defaulted)
     TransitionBuilder(TransitionBuilder&&) = default;
+    
+    /// @brief Move assignment operator (defaulted)
     TransitionBuilder& operator=(TransitionBuilder&&) = default;
     
     /// @brief Adds a predicate (guard condition) to the transition
@@ -104,6 +111,7 @@ private:
 template<typename TEvent>
 class FSMBuilder {
 public:
+    /// @brief Type alias for state actions
     using Action = typename FSM<TEvent>::Action;
 
     /// @brief Constructs a builder for the given FSM
@@ -112,7 +120,11 @@ public:
     
     FSMBuilder(const FSMBuilder&) = delete;
     FSMBuilder& operator=(const FSMBuilder&) = delete;
+    
+    /// @brief Move constructor (defaulted)
     FSMBuilder(FSMBuilder&&) = default;
+    
+    /// @brief Move assignment operator (defaulted)
     FSMBuilder& operator=(FSMBuilder&&) = default;
     
     /// @brief Starts building a transition from the specified state

@@ -50,10 +50,11 @@ public:
     /// @note The input string_view's data is copied and stored internally
     std::string_view intern(std::string_view sv);
     
-    /// @brief Clears all interned strings
+    /// @brief Clears all interned strings (TEST ONLY - DO NOT USE IN PRODUCTION)
     /// @warning This method is for testing purposes only and is NOT thread-safe
     /// @warning After calling clear(), all previously returned string_views become invalid
-    /// @note This should never be called in production code
+    /// @warning Using this in production code will cause undefined behavior
+    /// @note This method exists solely to reset state between tests
     void clear();
 
 private:

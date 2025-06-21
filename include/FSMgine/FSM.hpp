@@ -26,6 +26,9 @@ namespace fsmgine {
 template<typename TEvent>
 class FSMBuilder;
 
+template<typename TEvent>
+class TransitionBuilder;
+
 /// @brief Exception thrown when attempting to access a state that doesn't exist
 /// @ingroup core
 class FSMStateNotFoundError : public std::runtime_error {
@@ -185,22 +188,20 @@ public:
         return process(std::monostate{});
     }
     
-    /// @brief Adds a transition from a state (internal use by builder)
-    /// @param from_state The source state
-    /// @param transition The transition to add
+private:
+    // Friend declarations for builder access
+    friend class FSMBuilder<TEvent>;
+    friend class TransitionBuilder<TEvent>;
+    
+    // Adds a transition from a state (internal use by builder)
     void addTransition(std::string_view from_state, Transition<TEvent> transition);
     
-    /// @brief Adds an on-enter action to a state (internal use by builder)
-    /// @param state The state to add the action to
-    /// @param action The action to execute when entering the state
+    // Adds an on-enter action to a state (internal use by builder)
     void addOnEnterAction(std::string_view state, Action action);
     
-    /// @brief Adds an on-exit action to a state (internal use by builder)
-    /// @param state The state to add the action to
-    /// @param action The action to execute when exiting the state
+    // Adds an on-exit action to a state (internal use by builder)
     void addOnExitAction(std::string_view state, Action action);
 
-private:
     std::unordered_map<std::string_view, StateData> states_;
     std::string_view current_state_;
     bool has_initial_state_ = false;

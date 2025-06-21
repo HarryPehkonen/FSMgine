@@ -13,6 +13,10 @@
 
 namespace fsmgine {
 
+// Forward declaration
+template<typename TEvent>
+class TransitionBuilder;
+
 /// @brief Represents a transition between states in a finite state machine
 /// @tparam TEvent The event type that triggers transitions
 /// @ingroup transitions
@@ -47,24 +51,31 @@ public:
     
     Transition(const Transition&) = delete;
     Transition& operator=(const Transition&) = delete;
+    
+    /// @brief Move constructor (defaulted)
     Transition(Transition&&) = default;
+    
+    /// @brief Move assignment operator (defaulted)
     Transition& operator=(Transition&&) = default;
     
     /// @brief Adds a predicate (guard condition) to this transition
     /// @param pred A function that returns true if the transition should be allowed
     /// @note Multiple predicates can be added; all must pass for the transition to occur
     /// @note Null predicates are ignored
+    /// @note This method is primarily for use by TransitionBuilder
     void addPredicate(Predicate pred);
     
     /// @brief Adds an action to execute when this transition occurs
     /// @param action A function to execute during the transition
     /// @note Multiple actions can be added; they execute in order
     /// @note Null actions are ignored
+    /// @note This method is primarily for use by TransitionBuilder
     void addAction(Action action);
     
     /// @brief Sets the target state for this transition
     /// @param state The name of the state to transition to
     /// @note The state should be interned using StringInterner for consistency
+    /// @note This method is primarily for use by TransitionBuilder
     void setTargetState(std::string_view state);
     
     /// @brief Evaluates all predicates for this transition
@@ -98,31 +109,15 @@ public:
     bool hasTargetState() const;
 
 private:
+    // Friend declaration for builder access
+    friend class TransitionBuilder<TEvent>;
+    
     std::vector<Predicate> predicates_;
     std::vector<Action> actions_;
     std::string_view target_state_;
 };
 
 // --- Implementation ---
-
-template<typename TEvent>
-void Transition<TEvent>::addPredicate(Predicate pred) {
-    if (pred) {
-        predicates_.push_back(std::move(pred));
-    }
-}
-
-template<typename TEvent>
-void Transition<TEvent>::addAction(Action action) {
-    if (action) {
-        actions_.push_back(std::move(action));
-    }
-}
-
-template<typename TEvent>
-void Transition<TEvent>::setTargetState(std::string_view state) {
-    target_state_ = state;
-}
 
 template<typename TEvent>
 bool Transition<TEvent>::predicatesPass(const TEvent& event) const {
@@ -168,6 +163,25 @@ bool Transition<TEvent>::hasActions() const {
 template<typename TEvent>
 bool Transition<TEvent>::hasTargetState() const {
     return !target_state_.empty();
+}
+
+template<typename TEvent>
+void Transition<TEvent>::addPredicate(Predicate pred) {
+    if (pred) {
+        predicates_.push_back(std::move(pred));
+    }
+}
+
+template<typename TEvent>
+void Transition<TEvent>::addAction(Action action) {
+    if (action) {
+        actions_.push_back(std::move(action));
+    }
+}
+
+template<typename TEvent>
+void Transition<TEvent>::setTargetState(std::string_view state) {
+    target_state_ = state;
 }
 
 } // namespace fsmgine

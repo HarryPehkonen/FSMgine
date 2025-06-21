@@ -1,7 +1,6 @@
 /// @file FSMgine.hpp
 /// @brief Main header file for the FSMgine library
 /// 
-/// @mainpage FSMgine Documentation
 /// @section intro Introduction
 /// FSMgine is a high-performance, header-only finite state machine library for C++17.
 /// 
