@@ -77,6 +77,29 @@ if(BUILD_BENCHMARKS)
     endif()
 endif()
 
+# Documentation support
+option(BUILD_DOCUMENTATION "Build documentation" OFF)
+if(BUILD_DOCUMENTATION)
+    find_package(Doxygen QUIET)
+    if(DOXYGEN_FOUND)
+        set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile)
+        set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+        
+        configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
+        
+        add_custom_target(docs
+            COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            COMMENT "Generating API documentation with Doxygen"
+            VERBATIM
+        )
+        
+        message(STATUS "Doxygen found. You can build documentation with 'make docs'")
+    else()
+        message(STATUS "Doxygen not found. Documentation target will not be available.")
+    endif()
+endif()
+
 # Example executables (optional)
 option(BUILD_EXAMPLES "Build example programs" OFF)
 

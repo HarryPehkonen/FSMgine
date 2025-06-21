@@ -1,3 +1,7 @@
+/// @file FSM.hpp
+/// @brief Core finite state machine implementation
+/// @ingroup core
+
 #pragma once
 
 #include <string_view>
@@ -13,35 +17,80 @@
 #include <mutex>
 #endif
 
+/// @defgroup core Core FSM Components
+/// @brief Core components of the FSMgine library
+
 namespace fsmgine {
 
 // Forward declaration
 template<typename TEvent>
 class FSMBuilder;
 
-// FSM-specific exceptions
+/// @brief Exception thrown when attempting to access a state that doesn't exist
+/// @ingroup core
 class FSMStateNotFoundError : public std::runtime_error {
 public:
+    /// @brief Constructs an exception for a missing state
+    /// @param state The name of the state that was not found
     explicit FSMStateNotFoundError(const std::string& state) 
         : std::runtime_error("FSM state not found: " + state) {}
 };
 
+/// @brief Exception thrown when FSM operations are attempted before initialization
+/// @ingroup core
 class FSMNotInitializedError : public std::runtime_error {
 public:
+    /// @brief Constructs an exception for uninitialized FSM
     FSMNotInitializedError() 
         : std::runtime_error("FSM has not been initialized with a state") {}
 };
 
+/// @brief Exception thrown for invalid state operations
+/// @ingroup core
 class FSMInvalidStateError : public std::invalid_argument {
 public:
+    /// @brief Constructs an exception for invalid state operations
+    /// @param message Detailed error message
     explicit FSMInvalidStateError(const std::string& message)
         : std::invalid_argument(message) {}
 };
 
+/// @brief A high-performance finite state machine implementation
+/// @tparam TEvent The event type used for transitions (defaults to std::monostate for event-less FSMs)
+/// @ingroup core
+/// 
+/// @details The FSM class provides a flexible and efficient state machine implementation
+/// with the following features:
+/// - Type-safe state and event handling
+/// - Support for guards (predicates) and actions on transitions
+/// - On-enter and on-exit actions for states
+/// - String interning for optimized state name storage
+/// - Optional thread-safety with FSMGINE_MULTI_THREADED
+/// 
+/// @par Example
+/// @code{.cpp}
+/// // Define an event type
+/// struct Event { std::string type; };
+/// 
+/// // Create an FSM
+/// FSM<Event> machine;
+/// machine.get_builder()
+///     .from("Idle").to("Working").when([](const Event& e) { return e.type == "start"; })
+///     .from("Working").to("Idle").when([](const Event& e) { return e.type == "stop"; })
+///     .build("Idle");
+/// 
+/// // Process events
+/// machine.process(Event{"start"});  // Transitions to "Working"
+/// @endcode
 template<typename TEvent = std::monostate>
 class FSM {
 public:
+    /// @brief Type alias for transition predicates
+    /// @details Functions that evaluate whether a transition should occur based on an event
     using Predicate = std::function<bool(const TEvent&)>;
+    
+    /// @brief Type alias for transition actions
+    /// @details Functions executed during transitions or state changes
     using Action = std::function<void(const TEvent&)>;
 
 private:
@@ -59,13 +108,15 @@ private:
     };
 
 public:
+    /// @brief Default constructor
     FSM() = default;
     
     // Copy operations are deleted
     FSM(const FSM&) = delete;
     FSM& operator=(const FSM&) = delete;
 
-    // Move operations
+    /// @brief Move constructor
+    /// @param other FSM to move from
     FSM(FSM&& other) noexcept {
 #ifdef FSMGINE_MULTI_THREADED
         std::unique_lock<std::mutex> lock(other.mutex_);
@@ -75,6 +126,9 @@ public:
         has_initial_state_ = other.has_initial_state_;
     }
 
+    /// @brief Move assignment operator
+    /// @param other FSM to move from
+    /// @return Reference to this FSM
     FSM& operator=(FSM&& other) noexcept {
         if (this != &other) {
 #ifdef FSMGINE_MULTI_THREADED
@@ -88,26 +142,62 @@ public:
         return *this;
     }
     
-    // Builder access
+    /// @brief Creates a builder for fluent FSM construction
+    /// @return A new FSMBuilder instance for this FSM
+    /// @par Example
+    /// @code{.cpp}
+    /// fsm.get_builder()
+    ///    .from("A").to("B").when([](const auto& e) { return true; })
+    ///    .build("A");
+    /// @endcode
     FSMBuilder<TEvent> get_builder();
     
-    // State management
+    /// @brief Sets the initial state of the FSM
+    /// @param state The name of the initial state
+    /// @throws FSMInvalidStateError if the state doesn't exist
+    /// @note This also executes any on-enter actions for the initial state
     void setInitialState(std::string_view state);
+    
+    /// @brief Changes the current state of the FSM
+    /// @param state The name of the state to transition to
+    /// @throws FSMInvalidStateError if the state doesn't exist
+    /// @note This executes on-exit actions for the current state and on-enter actions for the new state
     void setCurrentState(std::string_view state);
+    
+    /// @brief Gets the name of the current state
+    /// @return The current state name
+    /// @throws FSMNotInitializedError if no initial state has been set
     std::string_view getCurrentState() const;
     
-    // Event processing
+    /// @brief Processes an event and potentially transitions to a new state
+    /// @param event The event to process
+    /// @return true if a transition occurred, false otherwise
+    /// @throws FSMNotInitializedError if no initial state has been set
+    /// @throws FSMStateNotFoundError if the current state is invalid
+    /// @throws FSMInvalidStateError if a transition has no target state
     bool process(const TEvent& event);
     
-    // Convenience for event-less FSMs
+    /// @brief Processes a transition for event-less FSMs
+    /// @return true if a transition occurred, false otherwise
+    /// @note This method is only available for FSM<> or FSM<std::monostate>
     bool process() {
         static_assert(std::is_same_v<TEvent, std::monostate>, "process() can only be used with event-less FSMs (FSM<> or FSM<std::monostate>).");
         return process(std::monostate{});
     }
     
-    // Internal methods for builder
+    /// @brief Adds a transition from a state (internal use by builder)
+    /// @param from_state The source state
+    /// @param transition The transition to add
     void addTransition(std::string_view from_state, Transition<TEvent> transition);
+    
+    /// @brief Adds an on-enter action to a state (internal use by builder)
+    /// @param state The state to add the action to
+    /// @param action The action to execute when entering the state
     void addOnEnterAction(std::string_view state, Action action);
+    
+    /// @brief Adds an on-exit action to a state (internal use by builder)
+    /// @param state The state to add the action to
+    /// @param action The action to execute when exiting the state
     void addOnExitAction(std::string_view state, Action action);
 
 private:

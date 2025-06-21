@@ -194,6 +194,42 @@ target_link_libraries(your_project PRIVATE FSMgine::FSMgine)
 - `-DFSMGINE_MULTI_THREADED=ON`: Enable thread safety
 - `-DBUILD_TESTING=OFF`: Skip building tests
 - `-DBUILD_EXAMPLES=ON`: Build example programs
+- `-DBUILD_DOCUMENTATION=ON`: Enable documentation generation target
+
+## Documentation
+
+FSMgine uses Doxygen for API documentation. The documentation is automatically built and deployed to GitHub Pages when changes are pushed to the main branch.
+
+### Viewing Documentation Online
+
+Visit the [FSMgine Documentation](https://harrypehkonen.github.io/FSMgine/) to browse the latest API documentation.
+
+### Building Documentation Locally
+
+To build the documentation locally:
+
+```bash
+# Install Doxygen (if not already installed)
+sudo apt-get install doxygen graphviz  # On Ubuntu/Debian
+# or
+brew install doxygen graphviz          # On macOS
+
+# Configure with documentation enabled
+cmake .. -DBUILD_DOCUMENTATION=ON
+
+# Build documentation
+make docs
+
+# Open in browser
+open docs/html/index.html              # On macOS
+xdg-open docs/html/index.html          # On Linux
+```
+
+The generated documentation includes:
+- Complete API reference for all classes
+- Usage examples and code snippets
+- Module organization and relationships
+- Class diagrams and inheritance graphs
 
 ## Requirements
 

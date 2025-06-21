@@ -30,3 +30,25 @@
 *.exe
 *.out
 *.app
+
+# Documentation
+docs/
+doc/
+html/
+latex/
+
+# Build directories
+build/
+cmake-build-*/
+.cache/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
