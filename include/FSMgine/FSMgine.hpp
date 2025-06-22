@@ -2,14 +2,22 @@
 /// @brief Main header file for the FSMgine library
 /// 
 /// @section intro Introduction
-/// FSMgine is a high-performance, header-only finite state machine library for C++17.
+/// FSMgine is a high-performance finite state machine library for C++17, available in
+/// both single-threaded and multi-threaded variants.
 /// 
 /// @section features Features
 /// - Type-safe state and event handling
 /// - Support for both event-driven and event-less FSMs
 /// - Compile-time optimizations with string interning
-/// - Optional thread-safety with FSMGINE_MULTI_THREADED
+/// - Two library variants: FSMgine (single-threaded) and FSMgineMT (multi-threaded)
 /// - Fluent builder API for easy FSM construction
+/// 
+/// @section variants Library Variants
+/// FSMgine provides two library variants:
+/// - **FSMgine**: Single-threaded variant with no synchronization overhead
+/// - **FSMgineMT**: Multi-threaded variant with mutex-based thread safety
+/// 
+/// Choose the appropriate variant based on your application's threading requirements.
 /// 
 /// @section usage Basic Usage
 /// @code{.cpp}
@@ -22,6 +30,17 @@
 ///     .from("Unlocked").predicate([](const auto&) { return true; }).to("Locked");
 /// 
 /// turnstile.setInitialState("Locked");
+/// @endcode
+/// 
+/// @section linking Linking
+/// @code{.cmake}
+/// # For single-threaded applications:
+/// find_package(FSMgine REQUIRED)
+/// target_link_libraries(my_app PRIVATE FSMgine::FSMgine)
+/// 
+/// # For multi-threaded applications:
+/// find_package(FSMgineMT REQUIRED)
+/// target_link_libraries(my_app PRIVATE FSMgine::FSMgineMT)
 /// @endcode
 /// 
 /// @section modules Modules

@@ -68,7 +68,12 @@ public:
 /// - Support for guards (predicates) and actions on transitions
 /// - On-enter and on-exit actions for states
 /// - String interning for optimized state name storage
-/// - Optional thread-safety with FSMGINE_MULTI_THREADED
+/// - Thread-safety when using the FSMgineMT library variant
+/// 
+/// @par Thread Safety
+/// The thread-safety of FSM operations depends on which library variant you're using:
+/// - **FSMgine**: No thread synchronization, optimal for single-threaded applications
+/// - **FSMgineMT**: Full thread-safety with mutex protection on all operations
 /// 
 /// @par Example
 /// @code{.cpp}

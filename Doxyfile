@@ -6,7 +6,7 @@
 DOXYFILE_ENCODING      = UTF-8
 PROJECT_NAME           = "FSMgine"
 PROJECT_NUMBER         = 
-PROJECT_BRIEF          = "High-performance header-only FSM library for C++17"
+PROJECT_BRIEF          = "High-performance finite state machine library for C++17 with single-threaded and multi-threaded variants"
 PROJECT_LOGO           = 
 OUTPUT_DIRECTORY       = ./docs
 CREATE_SUBDIRS         = NO
@@ -90,7 +90,7 @@ SHOW_NAMESPACES        = YES
 #---------------------------------------------------------------------------
 # Configuration options related to the input files
 #---------------------------------------------------------------------------
-INPUT                  = include/FSMgine README.md
+INPUT                  = include/FSMgine README.md docs/mainpage.md
 INPUT_ENCODING         = UTF-8
 # INPUT_FILE_ENCODING is not supported in Doxygen 1.9.4
 # INPUT_FILE_ENCODING    = 

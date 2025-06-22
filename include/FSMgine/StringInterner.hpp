@@ -25,13 +25,17 @@ namespace fsmgine {
 /// - Fast pointer-based string comparisons (O(1) instead of O(n))
 /// - Reduced memory usage when the same state names are used multiple times
 /// - Guaranteed string_view safety throughout the FSM lifetime
-/// - Thread-safe operations when compiled with FSMGINE_MULTI_THREADED
+/// - Thread-safe operations when using the FSMgineMT library variant
 /// 
 /// @note This is a singleton class - use StringInterner::instance() to access
 /// 
 /// @par Thread Safety
-/// When compiled with FSMGINE_MULTI_THREADED defined, all operations are thread-safe.
-/// The clear() method is an exception and should only be used in single-threaded tests.
+/// Thread-safety depends on which library variant you're using:
+/// - **FSMgine**: No thread synchronization, must be used from a single thread
+/// - **FSMgineMT**: All operations are protected by mutexes for thread-safe access
+/// 
+/// @warning The clear() method is NOT thread-safe in either variant and should 
+/// only be used in single-threaded test scenarios.
 class StringInterner {
 public:
     /// @brief Gets the singleton instance of StringInterner
