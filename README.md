@@ -1,6 +1,6 @@
 # FSMgine
 
-A modern C++ library for building robust finite state machines with a fluent builder interface, thread-safety support, and memory-efficient string interning.  This library was written with much support from several AI.
+A modern C++ library for building robust finite state machines with a fluent builder interface, thread-safety support, and memory-efficient string interning. This library was written with much support from several AI.
 
 ## Features
 
@@ -9,6 +9,19 @@ A modern C++ library for building robust finite state machines with a fluent bui
 - **Memory Efficient**: String interning reduces memory footprint and improves performance
 - **RAII Design**: Move-only semantics and clear ownership models
 - **Flexible Architecture**: No event loop management - integrates into existing applications
+
+## Library Architecture
+
+FSMgine is **not a header-only library**. It consists of:
+- Header files providing the API
+- A static library (`libFSMgine.a` on Unix, `FSMgine.lib` on Windows) containing implementations
+
+The static library includes:
+- `StringInterner` singleton implementation for memory-efficient state name storage
+- Core FSM functionality
+- Thread synchronization primitives (when built with `FSMGINE_MULTI_THREADED=ON`)
+
+**Important:** You must link against the FSMgine library in your project.
 
 ## Installation
 
@@ -148,6 +161,17 @@ private:
 };
 ```
 
+### Transitions Without Predicates
+
+If a transition should always occur (no condition), you can omit the predicate:
+
+```cpp
+fsm.get_builder()
+    .from("STATE_A")
+    .action([](const EventType& e) { /* always execute this */ })
+    .to("STATE_B");
+```
+
 ## State Management
 
 FSMgine provides two methods for setting the current state:
@@ -180,18 +204,30 @@ A simple but effective example that validates balanced parentheses in a string.
 
 ### CMake Integration
 
+FSMgine requires proper linking configuration:
+
 ```cmake
 cmake_minimum_required(VERSION 3.20)
 project(your_project)
 
+# If FSMgine was built with thread support, find Threads first
+find_package(Threads REQUIRED)
 find_package(FSMgine REQUIRED)
+
 add_executable(your_project src/main.cpp)
 target_link_libraries(your_project PRIVATE FSMgine::FSMgine)
 ```
 
+**Note:** The `FSMgine::FSMgine` target automatically handles:
+- Linking against the static library (`libFSMgine.a`)
+- Including necessary headers
+- Linking against `Threads::Threads` (if FSMgine was built with thread support)
+
 ### Build Options
 
 - `-DFSMGINE_MULTI_THREADED=ON`: Enable thread safety
+  - **Note:** When enabled, FSMgine will depend on the Threads library
+  - Applications using FSMgine must ensure Threads is available
 - `-DBUILD_TESTING=OFF`: Skip building tests
 - `-DBUILD_EXAMPLES=ON`: Build example programs
 - `-DBUILD_DOCUMENTATION=ON`: Enable documentation generation target
@@ -231,12 +267,52 @@ The generated documentation includes:
 - Module organization and relationships
 - Class diagrams and inheritance graphs
 
+## Troubleshooting
+
+### Undefined references to `StringInterner`
+
+If you see linker errors like:
+```
+undefined reference to `fsmgine::StringInterner::instance()'
+undefined reference to `fsmgine::StringInterner::intern(...)'
+```
+
+This means you're not linking against the FSMgine library. Ensure:
+1. You've called `find_package(FSMgine REQUIRED)` in your CMakeLists.txt
+2. You've added `FSMgine::FSMgine` to your target's link libraries
+3. FSMgine is properly installed (`sudo make install` was successful)
+
+Example fix:
+```cmake
+find_package(FSMgine REQUIRED)
+target_link_libraries(your_target PRIVATE FSMgine::FSMgine)
+```
+
+### Thread-related linking errors
+
+If FSMgine was built with `-DFSMGINE_MULTI_THREADED=ON`, you may need:
+```cmake
+find_package(Threads REQUIRED)  # Before finding FSMgine
+find_package(FSMgine REQUIRED)
+```
+
+### FSMgine package not found
+
+If CMake cannot find FSMgine:
+1. Ensure FSMgine is installed: `sudo make install` from the FSMgine build directory
+2. Check installation prefix matches your system's CMake search paths
+3. Alternatively, specify the path manually:
+   ```cmake
+   find_package(FSMgine REQUIRED PATHS /path/to/fsmgine/install)
+   ```
+
 ## Requirements
 
 - C++17 or later
 - CMake 3.20+
 - Google Test (for testing)
+- Threads library (if built with multi-threading support)
 
 ## License
 
-Please see the LICENSE file.  This code is released to the public domain.  Specifics are in the file.
+Please see the LICENSE file. This code is released to the public domain. Specifics are in the file. 
