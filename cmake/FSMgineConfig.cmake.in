@@ -2,10 +2,24 @@
 
 include(CMakeFindDependencyMacro)
 
-if(@FSMGINE_MULTI_THREADED@)
+# Set threading configuration
+set(FSMGINE_IS_MULTITHREADED @FSMGINE_IS_MULTITHREADED@)
+
+if(FSMGINE_IS_MULTITHREADED)
     find_dependency(Threads)
 endif()
 
-include("${CMAKE_CURRENT_LIST_DIR}/FSMgineTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/@FSMGINE_TARGET_NAME@Targets.cmake")
 
-check_required_components(FSMgine) 
+# Ensure proper compile definitions are set for consumers
+if(FSMGINE_IS_MULTITHREADED)
+    # The compile definition is already PUBLIC on the target, so no additional action needed
+    message(STATUS "Using multi-threaded FSMgine library")
+else()
+    message(STATUS "Using single-threaded FSMgine library")
+endif()
+
+# Set component variables for find_package
+set(@FSMGINE_TARGET_NAME@_FOUND TRUE)
+
+check_required_components(@FSMGINE_TARGET_NAME@) 

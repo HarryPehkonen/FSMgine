@@ -5,23 +5,29 @@ A modern C++ library for building robust finite state machines with a fluent bui
 ## Features
 
 - **Fluent Builder API**: Type-safe, self-documenting interface for FSM construction
-- **Thread Safety**: Optional multi-threaded support with compile-time flags
+- **Thread Safety**: Optional multi-threaded support via separate library variant
 - **Memory Efficient**: String interning reduces memory footprint and improves performance
 - **RAII Design**: Move-only semantics and clear ownership models
 - **Flexible Architecture**: No event loop management - integrates into existing applications
+- **Dual Library Variants**: Separate single-threaded and multi-threaded libraries for optimal performance and clear usage
 
 ## Library Architecture
 
-FSMgine is **not a header-only library**. It consists of:
-- Header files providing the API
-- A static library (`libFSMgine.a` on Unix, `FSMgine.lib` on Windows) containing implementations
+FSMgine provides two library variants to ensure clear thread-safety semantics:
 
-The static library includes:
+- **`libFSMgine`**: Single-threaded variant with no synchronization overhead
+- **`libFSMgineMT`**: Multi-threaded variant with full thread-safety using mutexes
+
+Both libraries share the same API but have different runtime characteristics:
+- The single-threaded variant (`FSMgine`) has no locking overhead and doesn't require pthread
+- The multi-threaded variant (`FSMgineMT`) provides thread-safe operations at the cost of synchronization overhead
+
+The libraries include:
 - `StringInterner` singleton implementation for memory-efficient state name storage
 - Core FSM functionality
-- Thread synchronization primitives (when built with `FSMGINE_MULTI_THREADED=ON`)
+- Thread synchronization primitives (in the MT variant only)
 
-**Important:** You must link against the FSMgine library in your project.
+**Important:** You must link against the appropriate FSMgine library variant based on your threading requirements.
 
 ## Installation
 
@@ -33,13 +39,27 @@ cd FSMgine
 # Create build directory
 mkdir build && cd build
 
-# Configure with CMake
+# Configure with CMake (builds both library variants by default)
 cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+
+# Or configure to build only specific variants:
+# Single-threaded only:
+cmake .. -DFSMGINE_BUILD_SINGLETHREADED=ON -DFSMGINE_BUILD_MULTITHREADED=OFF
+
+# Multi-threaded only:
+cmake .. -DFSMGINE_BUILD_SINGLETHREADED=OFF -DFSMGINE_BUILD_MULTITHREADED=ON
 
 # Build and install
 make
 sudo make install
 ```
+
+After installation, you'll have:
+- `/usr/local/lib/libFSMgine.{a,so}` - Single-threaded library
+- `/usr/local/lib/libFSMgineMT.{a,so}` - Multi-threaded library
+- `/usr/local/include/FSMgine/` - Shared headers
+- `/usr/local/lib/cmake/FSMgine/` - CMake config for single-threaded
+- `/usr/local/lib/cmake/FSMgineMT/` - CMake config for multi-threaded
 
 ## Quick Start
 
@@ -186,7 +206,7 @@ These examples demonstrate how to apply FSMgine to solve common problems. They i
 
 ### 1. Resource Pool Management
 Demonstrates a thread-safe resource pool.
-- **Pattern:** The FSM models the state of the pool (`IDLE`, `BUSY`, `EMPTY`). FSM actions modify an `std::atomic<int>` counter for available resources. This shows how to use the FSM's built-in locking (via `-DFSMGINE_MULTI_THREADED=ON`) in combination with atomic variables to manage concurrent access safely.
+- **Pattern:** The FSM models the state of the pool (`IDLE`, `BUSY`, `EMPTY`). FSM actions modify an `std::atomic<int>` counter for available resources. This example should be linked against `FSMgineMT` to ensure thread-safe FSM operations in combination with atomic variables for concurrent access safety.
 
 ### 2. Protocol Parser
 Shows how to build a state machine for parsing a simple network protocol string.
@@ -204,30 +224,44 @@ A simple but effective example that validates balanced parentheses in a string.
 
 ### CMake Integration
 
-FSMgine requires proper linking configuration:
+FSMgine provides two library variants that can be used based on your threading requirements:
+
+#### Single-Threaded Usage
 
 ```cmake
 cmake_minimum_required(VERSION 3.20)
 project(your_project)
 
-# If FSMgine was built with thread support, find Threads first
-find_package(Threads REQUIRED)
 find_package(FSMgine REQUIRED)
 
 add_executable(your_project src/main.cpp)
 target_link_libraries(your_project PRIVATE FSMgine::FSMgine)
 ```
 
-**Note:** The `FSMgine::FSMgine` target automatically handles:
-- Linking against the static library (`libFSMgine.a`)
+#### Multi-Threaded Usage
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(your_project)
+
+find_package(FSMgineMT REQUIRED)
+
+add_executable(your_project src/main.cpp)
+target_link_libraries(your_project PRIVATE FSMgine::FSMgineMT)
+```
+
+**Note:** The CMake targets automatically handle:
+- Linking against the appropriate static library
 - Including necessary headers
-- Linking against `Threads::Threads` (if FSMgine was built with thread support)
+- Linking against `Threads::Threads` (for FSMgineMT only)
+- Setting the `FSMGINE_MULTI_THREADED` compile definition (for FSMgineMT only)
 
 ### Build Options
 
-- `-DFSMGINE_MULTI_THREADED=ON`: Enable thread safety
-  - **Note:** When enabled, FSMgine will depend on the Threads library
-  - Applications using FSMgine must ensure Threads is available
+- `-DFSMGINE_BUILD_SINGLETHREADED=ON`: Build single-threaded library (default: ON)
+- `-DFSMGINE_BUILD_MULTITHREADED=ON`: Build multi-threaded library (default: ON)
+- `-DTEST_MULTITHREADED=ON`: Run tests with multi-threaded library (default: matches FSMGINE_BUILD_MULTITHREADED)
+- `-DEXAMPLES_USE_MULTITHREADED=ON`: Build examples with multi-threaded library (default: matches FSMGINE_BUILD_MULTITHREADED)
 - `-DBUILD_TESTING=OFF`: Skip building tests
 - `-DBUILD_EXAMPLES=ON`: Build example programs
 - `-DBUILD_DOCUMENTATION=ON`: Enable documentation generation target
@@ -278,40 +312,54 @@ undefined reference to `fsmgine::StringInterner::intern(...)'
 ```
 
 This means you're not linking against the FSMgine library. Ensure:
-1. You've called `find_package(FSMgine REQUIRED)` in your CMakeLists.txt
-2. You've added `FSMgine::FSMgine` to your target's link libraries
-3. FSMgine is properly installed (`sudo make install` was successful)
+1. You've called `find_package(FSMgine REQUIRED)` or `find_package(FSMgineMT REQUIRED)` in your CMakeLists.txt
+2. You've added the appropriate target to your link libraries:
+   - `FSMgine::FSMgine` for single-threaded
+   - `FSMgine::FSMgineMT` for multi-threaded
+3. The appropriate library is properly installed (`sudo make install` was successful)
 
 Example fix:
 ```cmake
+# For single-threaded:
 find_package(FSMgine REQUIRED)
 target_link_libraries(your_target PRIVATE FSMgine::FSMgine)
+
+# For multi-threaded:
+find_package(FSMgineMT REQUIRED)
+target_link_libraries(your_target PRIVATE FSMgine::FSMgineMT)
 ```
 
 ### Thread-related linking errors
 
-If FSMgine was built with `-DFSMGINE_MULTI_THREADED=ON`, you may need:
-```cmake
-find_package(Threads REQUIRED)  # Before finding FSMgine
-find_package(FSMgine REQUIRED)
-```
+If you're using FSMgineMT but getting pthread-related errors:
+- The FSMgineMT CMake configuration should automatically handle pthread linking
+- If issues persist, ensure your system has pthread development headers installed
+
+### Mixing library variants
+
+**Important:** Do not link both FSMgine and FSMgineMT in the same executable. Choose one based on your threading requirements:
+- Use `FSMgine` for single-threaded applications (no synchronization overhead)
+- Use `FSMgineMT` for multi-threaded applications (thread-safe operations)
 
 ### FSMgine package not found
 
-If CMake cannot find FSMgine:
-1. Ensure FSMgine is installed: `sudo make install` from the FSMgine build directory
-2. Check installation prefix matches your system's CMake search paths
-3. Alternatively, specify the path manually:
+If CMake cannot find FSMgine or FSMgineMT:
+1. Ensure the libraries are installed: `sudo make install` from the FSMgine build directory
+2. Check that you built the variant you're trying to use
+3. Check installation prefix matches your system's CMake search paths
+4. Alternatively, specify the path manually:
    ```cmake
    find_package(FSMgine REQUIRED PATHS /path/to/fsmgine/install)
+   # or
+   find_package(FSMgineMT REQUIRED PATHS /path/to/fsmgine/install)
    ```
 
 ## Requirements
 
 - C++17 or later
 - CMake 3.20+
-- Google Test (for testing)
-- Threads library (if built with multi-threading support)
+- Google Test (optional, for testing)
+- Threads library (required only for FSMgineMT variant)
 
 ## License
 
