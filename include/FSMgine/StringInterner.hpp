@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <deque>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -54,20 +55,26 @@ public:
     /// @note The input string_view's data is copied and stored internally
     std::string_view intern(std::string_view sv);
     
-    /// @brief Clears all interned strings (TEST ONLY - DO NOT USE IN PRODUCTION)
+    /// @brief Clears the interning index (TEST ONLY - DO NOT USE IN PRODUCTION)
     /// @warning This method is for testing purposes only and is NOT thread-safe
-    /// @warning After calling clear(), all previously returned string_views become invalid
-    /// @warning Using this in production code will cause undefined behavior
+    /// @note Previously returned string_views REMAIN VALID after clear(): the
+    /// underlying storage arena is retained until the StringInterner is
+    /// destroyed. clear() only forgets the index, so the same string re-interned
+    /// afterwards yields a new (distinct but equal) string_view.
     /// @note This method exists solely to reset state between tests
     void clear();
 
 private:
+    /// @brief Interns a copy of sv, returning a view valid for the interner's lifetime
+    std::string_view intern_impl(std::string_view sv);
+
     StringInterner() = default;
     ~StringInterner() = default;
     StringInterner(const StringInterner&) = delete;
     StringInterner& operator=(const StringInterner&) = delete;
 
-    std::unordered_set<std::string> interned_strings_;
+    std::unordered_set<std::string_view> interned_strings_;
+    std::deque<std::string> storage_;  // stable arena: views stay valid for interner lifetime
     
 #ifdef FSMGINE_MULTI_THREADED
     mutable std::mutex mutex_;

@@ -48,7 +48,7 @@ function(create_fsmgine_target TARGET_NAME MULTI_THREADED)
     
     # Add compiler warnings
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(${TARGET_NAME} PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(${TARGET_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
     elseif(MSVC)
         target_compile_options(${TARGET_NAME} PRIVATE /W4)
     endif()
@@ -225,3 +225,14 @@ endif()
 if(TARGET FSMgineMT)
     install_fsmgine_target(FSMgineMT)
 endif()
+
+# --- CODING_STANDARDS.md: warnings as errors for tests/examples too ---
+# (Libraries FSMgine/FSMgineMT already get -Werror inside create_fsmgine_target.)
+foreach(fsm_target FSMgine_tests FSMgine_simple_tests
+                  turnstile_example other_class_instance other_class_eventful
+                  no_class_functional parentheses_checker calculator
+                  protocol_parser resource_pool_example)
+    if(TARGET ${fsm_target})
+        target_compile_options(${fsm_target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+endforeach()

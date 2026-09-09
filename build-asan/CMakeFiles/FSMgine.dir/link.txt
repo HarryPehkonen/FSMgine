@@ -1,0 +1,2 @@
+/usr/bin/ar qc libFSMgine.a CMakeFiles/FSMgine.dir/src/StringInterner.cpp.o
+/usr/bin/ranlib libFSMgine.a
