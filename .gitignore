@@ -39,6 +39,7 @@ latex/
 
 # Build directories
 build/
+build-*/
 cmake-build-*/
 .cache/
 
