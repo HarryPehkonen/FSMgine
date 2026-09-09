@@ -67,3 +67,17 @@ ls CMakeLists.txt
 # For code generation mode (if old structure exists)
 ./fsmgine < input.cpp > output.cpp
 ```
+
+## C++ Standards (MANDATORY)
+
+All C++ work in this repo MUST follow `CODING_STANDARDS.md` — modern C++17 in
+the spirit of the C++ Core Guidelines (Type/Bounds/Lifetime); exceptions
+allowed. This is an FSM library: respect the threading model
+(`FSMGINE_MULTI_THREADED`, shared-mutex read/write discipline) and the
+move-only semantics of FSM objects. Gates before any commit:
+
+1. `cmake -B build && cmake --build build` — zero warnings (own targets
+   compile with -Wall -Wextra -Wpedantic -Werror).
+2. `ctest --test-dir build` — all tests pass (TDD: failing test first).
+3. No raw owning pointers, no `new`/`delete`, no C casts.
+4. Sanitizer pass where feasible (ASan+UBSan recipe in CODING_STANDARDS.md).
