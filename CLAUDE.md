@@ -81,3 +81,31 @@ move-only semantics of FSM objects. Gates before any commit:
 2. `ctest --test-dir build` — all tests pass (TDD: failing test first).
 3. No raw owning pointers, no `new`/`delete`, no C casts.
 4. Sanitizer pass where feasible (ASan+UBSan recipe in CODING_STANDARDS.md).
+
+## Fuzzing
+
+Two libFuzzer targets live behind `-DFSMGINE_BUILD_FUZZING=ON` (clang only):
+`fuzz_fsmgine`, a stateful driver for the engine + interner, and `retention_check`,
+a regression test that drives the target with many inputs and asserts resident
+memory stays bounded.
+
+```bash
+cmake -B build-fuzz -DFSMGINE_BUILD_FUZZING=ON -DFSMGINE_BUILD_MULTITHREADED=OFF \
+      -DBUILD_TESTING=OFF -DCMAKE_CXX_COMPILER=clang++ ..
+cmake --build build-fuzz --target fuzz_fsmgine retention_check
+./build-fuzz/fuzz_fsmgine <corpus-dir>     # binaries land in the build root
+./build-fuzz/retention_check
+```
+
+**Rule: reset the interner between inputs.** `StringInterner` is a process-global
+singleton whose storage arena is append-only by design — `clear()` forgets the
+lookup index but keeps the storage so views handed out earlier stay valid. A
+long-running target that keeps interning fresh names therefore grows resident
+memory without limit: measured at ~250 MiB/min, it ended a run after 12 minutes on
+libFuzzer's own 2 GB guard. So every input must finish with
+`StringInterner::reset()`, which releases the arena and **invalidates every view** —
+and everything holding a view (the machine, the view and name pools) must be
+destroyed **first**. See `fuzz/retention_check.cpp`.
+
+Do **not** "fix" growth by shrinking the name vocabulary: it costs coverage (it
+took the FSMgine corpus from 1124 entries to ~400). `reset()` is the fix.

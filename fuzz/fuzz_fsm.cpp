@@ -15,6 +15,16 @@
 //
 // All library exceptions are expected and caught; a crash or sanitizer
 // report means a real bug.
+//
+// Between inputs the harness is a clean slate: it destroys the machine and both
+// view pools first (the machine holds interned state-name views), then calls
+// StringInterner::reset(). That matters because the interner is a process-global
+// singleton whose arena is append-only by design — clear() only forgets the lookup
+// index — so a campaign that keeps interning fresh names grows RSS without limit.
+// Measured 2026-09-13: ~250 MiB/min, which ended the run after 12 minutes on
+// libFuzzer's own 2 GB guard. fuzz/retention_check.cpp is the regression test for
+// this; keep it passing, and do not "fix" growth by shrinking the name vocabulary
+// (that costs coverage — it did, 1124 corpus entries down to ~400).
 
 #include "FSMgine/FSMgine.hpp"
 
