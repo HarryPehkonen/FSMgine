@@ -41,4 +41,27 @@ void StringInterner::clear() {
     interned_strings_.clear();
 }
 
+void StringInterner::reset() {
+#ifdef FSMGINE_MULTI_THREADED
+    std::lock_guard<std::mutex> lock(mutex_);
+#endif
+    // Release BOTH containers, not just their contents. Swap-with-empty rather
+    // than clear()+shrink_to_fit(): shrink_to_fit() is a non-binding request the
+    // standard does not require implementations to honour, and for deque it is
+    // not honoured in practice. The temporaries own the old blocks and buckets,
+    // so both are freed before this function returns.
+    std::unordered_set<std::string_view> empty_index;
+    interned_strings_.swap(empty_index);
+
+    std::deque<std::string> empty_arena;
+    storage_.swap(empty_arena);
+}
+
+std::size_t StringInterner::arena_size() const {
+#ifdef FSMGINE_MULTI_THREADED
+    std::lock_guard<std::mutex> lock(mutex_);
+#endif
+    return storage_.size();
+}
+
 } // namespace fsmgine

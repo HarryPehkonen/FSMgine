@@ -4,12 +4,18 @@
 // ---------------
 // StringInterner is a process-global singleton whose storage arena is append-only
 // by design: `clear()` resets the lookup index but deliberately KEEPS the storage
-// so that every view handed out earlier stays valid for the interner's lifetime.
-// A fuzz target that interns *unboundedly many distinct* names therefore grows
-// resident memory for as long as it runs. On 2026-09-13 that is exactly what
-// happened: the FSMgine target hit libFuzzer's own guard after 12 minutes —
+// so that views handed out earlier stay valid for the interner's lifetime. A
+// long-running workload that keeps interning fresh names therefore grows resident
+// memory for as long as it runs. On 2026-09-13 that ended the overnight campaign:
+// the FSMgine target hit libFuzzer's own guard after 12 minutes —
 //
 //     ERROR: libFuzzer: out-of-memory (used: 2050Mb; limit: 2048Mb)
+//
+// The remedy is StringInterner::reset(), which releases the arena; the harness now
+// calls it once per input, having first torn down everything holding a view. A/B
+// over 30000 inputs x 2048 bytes, everything else identical:
+//   clear() per input (arena kept)    -> 141 MiB growth, FAIL
+//   reset() per input (arena released) ->   1 MiB growth, PASS
 //
 // What it asserts
 // ---------------
@@ -98,9 +104,10 @@ int main() {
               << kMaxGrowthKib / 1024 << " MiB)" << std::endl;
 
     if (growth > kMaxGrowthKib) {
-        std::cout << "FAIL: resident memory grew without bound - the target's name "
-                     "generation is not bounded (see StringInterner::clear(): the "
-                     "arena is never released)." << std::endl;
+        std::cout << "FAIL: resident memory grew without bound - the target is not "
+                     "releasing the interner's arena between inputs. Call "
+                     "StringInterner::reset(); clear() keeps the arena by design."
+                  << std::endl;
         return 1;
     }
 

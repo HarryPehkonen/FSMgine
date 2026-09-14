@@ -53,24 +53,17 @@ struct Reader {
         return v;
     }
 
-    // 1..3 characters drawn from a 4-symbol alphabet: at most 4 + 16 + 64 = 84
-    // distinct names, plus the "s"/"state" fallbacks.
-    //
-    // Bounded ON PURPOSE. StringInterner is a process-global singleton whose
-    // storage arena is append-only by design — clear() resets the index and
-    // deliberately keeps the storage so views handed out earlier stay valid — so
-    // generating unboundedly many distinct names grows RSS for the whole run. On
-    // 2026-09-13 that ended the campaign after 12 minutes:
-    //   ERROR: libFuzzer: out-of-memory (used: 2050Mb; limit: 2048Mb)
-    // A bounded vocabulary keeps resident memory flat for hours while still
-    // exercising intern/cache-hit paths, state lookup and the transition graph.
-    // Regression: fuzz/retention_check.cpp.
+    // 1..16 hex characters derived from the input stream. Unbounded in principle,
+    // which is fine because LLVMFuzzerTestOneInput() releases the interner's arena
+    // before every input (see below): each input is an independent workload, so
+    // nothing carries over. An earlier revision capped this to a 4-symbol alphabet
+    // to stop unbounded growth, at the cost of no longer covering long names.
     std::string name() {
         std::string s;
-        const size_t take = static_cast<size_t>(u8() % 3) + 1;
+        const size_t take = static_cast<size_t>(u8() % 16) + 1;
         for (size_t j = 0; j < take && n > 0; ++j) {
-            static constexpr char kSymbols[] = "abcd";
-            s.push_back(kSymbols[u8() & 0x03]);
+            static constexpr char kHex[] = "0123456789abcdef";
+            s.push_back(kHex[u8() & 0x0f]);
         }
         return s.empty() ? std::string("s") : s;
     }
@@ -96,8 +89,16 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         return 0;
     }
 
+    // Each input is an independent workload. Everything that holds an interned
+    // view must go before the arena is released: the machine stores state-name
+    // views, and reset() invalidates every view the interner ever handed out.
+    fsm_.reset();
+    views_.clear();
+    names_.clear();
+
     Reader r{data, size};
     auto& interner = StringInterner::instance();
+    interner.reset();
 
     while (r.n > 0) {
         const uint8_t op = r.u8() & 0x07;

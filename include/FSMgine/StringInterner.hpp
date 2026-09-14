@@ -64,6 +64,23 @@ public:
     /// @note This method exists solely to reset state between tests
     void clear();
 
+    /// @brief Releases the storage arena, invalidating every previously returned view
+    /// @warning Every string_view this interner has ever returned becomes DANGLING.
+    ///          Only call this when nothing holds an outstanding view: between
+    ///          independent workloads (a fuzzer input, a test case, a batch job).
+    /// @note Unlike clear(), which keeps the arena so that old views stay valid,
+    ///       this actually frees the storage. Re-interning the same text afterwards
+    ///       yields a new view with the same contents.
+    /// @note Takes the interner mutex in the FSMgineMT variant; callers are still
+    ///       responsible for having no live views on other threads.
+    void reset();
+
+    /// @brief Number of strings currently retained in the storage arena
+    /// @return The arena size. reset() returns this to 0; clear() leaves it unchanged.
+    /// @note For tests and diagnostics: this is the memory the interner holds,
+    ///       independently of how many names the lookup index currently covers.
+    std::size_t arena_size() const;
+
 private:
     /// @brief Interns a copy of sv, returning a view valid for the interner's lifetime
     std::string_view intern_impl(std::string_view sv);
