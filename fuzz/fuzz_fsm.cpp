@@ -53,13 +53,24 @@ struct Reader {
         return v;
     }
 
-    // 1..16 hex characters derived from the input stream.
+    // 1..3 characters drawn from a 4-symbol alphabet: at most 4 + 16 + 64 = 84
+    // distinct names, plus the "s"/"state" fallbacks.
+    //
+    // Bounded ON PURPOSE. StringInterner is a process-global singleton whose
+    // storage arena is append-only by design — clear() resets the index and
+    // deliberately keeps the storage so views handed out earlier stay valid — so
+    // generating unboundedly many distinct names grows RSS for the whole run. On
+    // 2026-09-13 that ended the campaign after 12 minutes:
+    //   ERROR: libFuzzer: out-of-memory (used: 2050Mb; limit: 2048Mb)
+    // A bounded vocabulary keeps resident memory flat for hours while still
+    // exercising intern/cache-hit paths, state lookup and the transition graph.
+    // Regression: fuzz/retention_check.cpp.
     std::string name() {
         std::string s;
-        const size_t take = static_cast<size_t>(u8() % 16) + 1;
+        const size_t take = static_cast<size_t>(u8() % 3) + 1;
         for (size_t j = 0; j < take && n > 0; ++j) {
-            static constexpr char kHex[] = "0123456789abcdef";
-            s.push_back(kHex[u8() & 0x0f]);
+            static constexpr char kSymbols[] = "abcd";
+            s.push_back(kSymbols[u8() & 0x03]);
         }
         return s.empty() ? std::string("s") : s;
     }

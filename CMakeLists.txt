@@ -257,4 +257,12 @@ if(FSMGINE_BUILD_FUZZING)
     target_link_libraries(fuzz_fsmgine PRIVATE FSMgine)
     target_compile_options(fuzz_fsmgine PRIVATE -fsanitize=fuzzer ${FSMGINE_FUZZ_SAN_LIST} -g -O1)
     set_target_properties(fuzz_fsmgine PROPERTIES LINK_FLAGS "-fsanitize=fuzzer ${FSMGINE_FUZZ_SAN_STR}")
+
+    # Regression test for the 2026-09-13 out-of-memory finding: driving the target
+    # with many inputs must not grow resident memory without bound. Links the fuzz
+    # entry point directly, so it needs no libFuzzer runtime.
+    add_executable(retention_check fuzz/retention_check.cpp fuzz/fuzz_fsm.cpp)
+    target_link_libraries(retention_check PRIVATE FSMgine)
+    target_compile_options(retention_check PRIVATE ${FSMGINE_FUZZ_SAN_LIST} -g -O1)
+    set_target_properties(retention_check PROPERTIES LINK_FLAGS "${FSMGINE_FUZZ_SAN_STR}")
 endif()
