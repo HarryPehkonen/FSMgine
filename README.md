@@ -200,6 +200,43 @@ FSMgine provides two methods for setting the current state:
 
 - **`setCurrentState(state)`**: Use this for runtime state changes when you need to forcibly change the state outside of normal transitions. It executes `onExit` actions for the current state (if any) and `onEnter` actions for the new state. This is useful for reset functionality or error recovery scenarios.
 
+## String Interning and Memory
+
+Every state name is interned: the FSM stores a `std::string_view` into the
+interning arena rather than copying text, which turns name comparisons into
+pointer comparisons and makes repeated names free.
+
+Two consequences are worth knowing before you ship:
+
+- **A returned `string_view` stays valid for the interner's lifetime.** That is
+  the whole point of the design, and it is why `intern()` is safe to call from
+  anywhere.
+- **The arena is append-only.** It retains every *distinct* name it has ever been
+  given; that memory is not returned until you release it. A long-running process
+  that interns a large number of unique names — a code generator, a batch job, a
+  fuzzer — will grow with it.
+
+`StringInterner::reset()` releases the arena and **invalidates every view the
+interner ever handed out**. Call it between independent workloads, when nothing
+holds an outstanding view:
+
+```cpp
+auto& interner = StringInterner::instance();
+// ... work with interned names ...
+interner.reset();   // arena released; every previous view is now dangling
+```
+
+`StringInterner::arena_size()` reports how many strings the arena currently
+retains, which is useful for diagnostics and tests.
+
+`StringInterner::clear()` is different: it forgets the lookup index but **keeps**
+the storage, so views handed out earlier stay valid. It exists for tests, and it
+is not a way to release memory.
+
+In a program that builds an FSM and keeps it alive, the arena holds one copy per
+distinct name — hundreds of bytes. The growth above only matters when the set of
+names is unbounded.
+
 ## Example Use Cases
 
 These examples demonstrate how to apply FSMgine to solve common problems. They illustrate patterns for managing state and logic within the FSM's actions and predicates.
@@ -265,6 +302,7 @@ target_link_libraries(your_project PRIVATE FSMgine::FSMgineMT)
 - `-DBUILD_TESTING=OFF`: Skip building tests
 - `-DBUILD_EXAMPLES=ON`: Build example programs
 - `-DBUILD_DOCUMENTATION=ON`: Enable documentation generation target
+- `-DFSMGINE_BUILD_FUZZING=ON`: Build the libFuzzer targets (requires clang; default: OFF)
 
 ## Documentation
 
@@ -301,6 +339,27 @@ The generated documentation includes:
 - Module organization and relationships
 - Class diagrams and inheritance graphs
 
+## Testing and Fuzzing
+
+```bash
+cmake -B build -DBUILD_TESTING=ON && cmake --build build
+ctest --test-dir build
+```
+
+libFuzzer targets (clang only) live behind `-DFSMGINE_BUILD_FUZZING=ON`:
+
+```bash
+cmake -B build-fuzz -DFSMGINE_BUILD_FUZZING=ON -DBUILD_TESTING=OFF \
+      -DCMAKE_CXX_COMPILER=clang++
+cmake --build build-fuzz --target fuzz_fsmgine retention_check
+./build-fuzz/fuzz_fsmgine <corpus-dir>   # stateful driver for the engine
+./build-fuzz/retention_check             # asserts resident memory stays bounded
+```
+
+A fuzz target must call `StringInterner::reset()` between inputs, with everything
+holding a view destroyed first — see the "Fuzzing" section of `CLAUDE.md` for the
+rule and the reason.
+
 ## Troubleshooting
 
 ### Undefined references to `StringInterner`
@@ -328,6 +387,13 @@ target_link_libraries(your_target PRIVATE FSMgine::FSMgine)
 find_package(FSMgineMT REQUIRED)
 target_link_libraries(your_target PRIVATE FSMgine::FSMgineMT)
 ```
+
+### Memory grows in a long-running process
+
+State names are interned into an append-only, process-global arena, so a program
+that interns a very large number of *distinct* names grows with it. Call
+`StringInterner::reset()` between independent workloads to release the arena —
+noting that it invalidates outstanding views. See "String Interning and Memory".
 
 ### Thread-related linking errors
 
