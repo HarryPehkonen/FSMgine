@@ -55,12 +55,11 @@ constexpr std::size_t kTotalInputs = 30000;
 
 // Growth allowed between the two halves of the run. Bounded-name harnesses sit
 // near zero; an unbounded one grows with the number of distinct names interned.
-constexpr long kMaxGrowthKib = 96 * 1024;  // 96 MiB
+constexpr long kMaxGrowthKib = 96 * 1024; // 96 MiB
 
 // Resident set size in KiB (second field of statm is resident pages).
 long rss_kib() {
-    static const long page_kib =
-        static_cast<long>(::sysconf(_SC_PAGESIZE)) / 1024;
+    static const long page_kib = static_cast<long>(::sysconf(_SC_PAGESIZE)) / 1024;
     std::ifstream statm("/proc/self/statm");
     long total_pages = 0;
     long resident_pages = 0;
@@ -79,7 +78,7 @@ void fill(std::vector<std::uint8_t>& buf, std::uint32_t& state) {
     }
 }
 
-}  // namespace
+} // namespace
 
 int main() {
     std::vector<std::uint8_t> buf(kInputBytes);
@@ -99,9 +98,8 @@ int main() {
 
     const long growth = after - before;
     std::cout << "Retention check: " << kTotalInputs << " inputs x " << kInputBytes
-              << " bytes; RSS " << before / 1024 << " MiB -> " << after / 1024
-              << " MiB; growth " << growth / 1024 << " MiB (limit "
-              << kMaxGrowthKib / 1024 << " MiB)" << std::endl;
+              << " bytes; RSS " << before / 1024 << " MiB -> " << after / 1024 << " MiB; growth "
+              << growth / 1024 << " MiB (limit " << kMaxGrowthKib / 1024 << " MiB)" << std::endl;
 
     if (growth > kMaxGrowthKib) {
         std::cout << "FAIL: resident memory grew without bound - the target is not "

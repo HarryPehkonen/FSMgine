@@ -26,13 +26,9 @@ std::string_view StringInterner::intern_impl(std::string_view sv) {
     return stored;
 }
 
-std::string_view StringInterner::intern(const std::string& str) {
-    return intern_impl(str);
-}
+std::string_view StringInterner::intern(const std::string& str) { return intern_impl(str); }
 
-std::string_view StringInterner::intern(std::string_view sv) {
-    return intern_impl(sv);
-}
+std::string_view StringInterner::intern(std::string_view sv) { return intern_impl(sv); }
 
 void StringInterner::clear() {
     // Testing-only. Forget the index but KEEP the storage arena, so views

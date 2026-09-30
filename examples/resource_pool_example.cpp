@@ -1,11 +1,11 @@
 #include "FSMgine/FSMgine.hpp"
+#include <atomic>
+#include <chrono>
 #include <iostream>
+#include <mutex>
+#include <random>
 #include <thread>
 #include <vector>
-#include <chrono>
-#include <mutex>
-#include <atomic>
-#include <random>
 
 using namespace fsmgine;
 
@@ -20,7 +20,7 @@ class ResourcePool {
 private:
     FSM<ResourceEvent> fsm;
     std::atomic<int> available_resources;
-    std::mutex cout_mutex;  // For synchronized output
+    std::mutex cout_mutex; // For synchronized output
 
     void log(const std::string& message) {
         std::lock_guard<std::mutex> lock(cout_mutex);
@@ -38,8 +38,9 @@ public:
         // Transition: IDLE -> BUSY (when resources are available)
         fsm.get_builder()
             .from("IDLE")
-            .predicate([this](const ResourceEvent& e) { return e.is_acquire && available_resources > 0; })
-            .action([this](const ResourceEvent&) { 
+            .predicate(
+                [this](const ResourceEvent& e) { return e.is_acquire && available_resources > 0; })
+            .action([this](const ResourceEvent&) {
                 available_resources--;
                 log("Resource acquired. Remaining: " + std::to_string(available_resources));
             })
@@ -58,7 +59,8 @@ public:
         // Transition: IDLE -> EMPTY (when no resources are available)
         fsm.get_builder()
             .from("IDLE")
-            .predicate([this](const ResourceEvent& e) { return e.is_acquire && available_resources == 0; })
+            .predicate(
+                [this](const ResourceEvent& e) { return e.is_acquire && available_resources == 0; })
             .to("EMPTY");
 
         // Transition: EMPTY -> IDLE (when resources become available)
@@ -70,17 +72,11 @@ public:
         fsm.setInitialState("IDLE");
     }
 
-    bool acquireResource() {
-        return fsm.process(ResourceEvent(true));
-    }
+    bool acquireResource() { return fsm.process(ResourceEvent(true)); }
 
-    bool releaseResource() {
-        return fsm.process(ResourceEvent(false));
-    }
+    bool releaseResource() { return fsm.process(ResourceEvent(false)); }
 
-    std::string_view getCurrentState() const {
-        return fsm.getCurrentState();
-    }
+    std::string_view getCurrentState() const { return fsm.getCurrentState(); }
 };
 
 void worker(ResourcePool& pool, int id, int iterations) {
@@ -93,7 +89,7 @@ void worker(ResourcePool& pool, int id, int iterations) {
         if (pool.acquireResource()) {
             // Simulate work
             std::this_thread::sleep_for(std::chrono::milliseconds(sleep_dist(gen)));
-            
+
             // Release resource
             pool.releaseResource();
         } else {
@@ -107,8 +103,7 @@ int main() {
     const int NUM_WORKERS = 5;
     const int ITERATIONS_PER_WORKER = 10;
 
-    std::cout << "Starting resource pool example with " 
-              << NUM_RESOURCES << " resources and " 
+    std::cout << "Starting resource pool example with " << NUM_RESOURCES << " resources and "
               << NUM_WORKERS << " workers\n\n";
 
     ResourcePool pool(NUM_RESOURCES);

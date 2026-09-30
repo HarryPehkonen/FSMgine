@@ -45,8 +45,8 @@ using fsmgine::StringInterner;
 constexpr size_t kMaxNames = 64;
 constexpr size_t kMaxViews = 32;
 
-std::vector<std::string> names_;        // raw names (input-derived)
-std::vector<std::string_view> views_;   // views handed out by the interner
+std::vector<std::string> names_;      // raw names (input-derived)
+std::vector<std::string_view> views_; // views handed out by the interner
 std::unique_ptr<FSM<int>> fsm_;
 
 struct Reader {
@@ -92,7 +92,7 @@ void ensure_fsm() {
     }
 }
 
-}  // namespace
+} // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     if (size == 0) {
@@ -114,54 +114,52 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         const uint8_t op = r.u8() & 0x07;
         try {
             switch (op) {
-                case 0: {  // intern a fresh name; retain the returned view
-                    const std::string name = r.name();
-                    std::string_view v = interner.intern(name);
-                    if (views_.size() >= kMaxViews) {
-                        views_.clear();
-                    }
-                    views_.push_back(v);
-                    break;
+            case 0: { // intern a fresh name; retain the returned view
+                const std::string name = r.name();
+                std::string_view v = interner.intern(name);
+                if (views_.size() >= kMaxViews) {
+                    views_.clear();
                 }
-                case 1:  // reset the interning index (views must stay valid)
-                    interner.clear();
-                    break;
-                case 2: {  // (re)build the live machine with a random transition
-                    ensure_fsm();
-                    const std::string from = r.name();
-                    const std::string to = r.name();
-                    auto builder = fsm_->get_builder();
-                    builder.from(from)
-                        .predicate([](const int& e) { return (e & 1) == 0; })
-                        .to(to);
-                    fsm_->setInitialState(from);
-                    break;
+                views_.push_back(v);
+                break;
+            }
+            case 1: // reset the interning index (views must stay valid)
+                interner.clear();
+                break;
+            case 2: { // (re)build the live machine with a random transition
+                ensure_fsm();
+                const std::string from = r.name();
+                const std::string to = r.name();
+                auto builder = fsm_->get_builder();
+                builder.from(from).predicate([](const int& e) { return (e & 1) == 0; }).to(to);
+                fsm_->setInitialState(from);
+                break;
+            }
+            case 3: // jump to a state by name (exceptions expected)
+                ensure_fsm();
+                fsm_->setCurrentState(pick(r, names_));
+                break;
+            case 4: // read current state (must not crash even when unset)
+                ensure_fsm();
+                (void)fsm_->getCurrentState();
+                break;
+            case 5: { // step with a pseudo-random event
+                ensure_fsm();
+                const int event = static_cast<int>(r.u8());
+                (void)fsm_->process(event);
+                break;
+            }
+            case 6: { // keep a small pool of names around
+                const std::string name = r.name();
+                if (names_.size() >= kMaxNames) {
+                    names_.clear();
                 }
-                case 3:  // jump to a state by name (exceptions expected)
-                    ensure_fsm();
-                    fsm_->setCurrentState(pick(r, names_));
-                    break;
-                case 4:  // read current state (must not crash even when unset)
-                    ensure_fsm();
-                    (void)fsm_->getCurrentState();
-                    break;
-                case 5: {  // step with a pseudo-random event
-                    ensure_fsm();
-                    const int event = static_cast<int>(r.u8());
-                    (void)fsm_->process(event);
-                    break;
-                }
-                case 6: {  // keep a small pool of names around
-                    const std::string name = r.name();
-                    if (names_.size() >= kMaxNames) {
-                        names_.clear();
-                    }
-                    names_.push_back(name);
-                    break;
-                }
-                case 7:  // fresh machine; also validate move semantics path
-                    fsm_ = std::make_unique<FSM<int>>();
-                    break;
+                names_.push_back(name);
+                break;
+            }
+            case 7: // fresh machine; also validate move semantics path
+                fsm_ = std::make_unique<FSM<int>>();
+                break;
             }
         } catch (const std::exception&) {
             // Expected: state-not-found, not-initialized, invalid-argument…
