@@ -1,0 +1,14 @@
+# Inherited clang-tidy findings, accepted when the gate was installed (2026-09-30).
+# Key = path:check. Line numbers are excluded on purpose: they move on every
+# reformat, and a line-keyed baseline stops matching without saying so.
+# Fix a finding, then delete its line here. Any key NOT in this file FAILS the
+# gate, so this list is a debt to pay down, not a permission slip.
+include/FSMgine/FSMBuilder.hpp:cppcoreguidelines-avoid-const-or-ref-data-members
+include/FSMgine/FSMBuilder.hpp:cppcoreguidelines-special-member-functions
+include/FSMgine/FSM.hpp:cppcoreguidelines-prefer-member-initializer
+include/FSMgine/FSM.hpp:cppcoreguidelines-special-member-functions
+include/FSMgine/StringInterner.hpp:cppcoreguidelines-special-member-functions
+include/FSMgine/Transition.hpp:cppcoreguidelines-special-member-functions
+tests/test_FSM.cpp:performance-avoid-endl
+tests/test_FSM.cpp:performance-inefficient-vector-operation
+tests/test_Integration.cpp:performance-enum-size

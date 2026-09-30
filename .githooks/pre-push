@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#
+# pre-push: the FULL tier — the gate, on the tree you are about to publish.
+#
+# from AI-DEV-STARTER (plunk-in kit) — if you edit this file, say why in INCIDENTS.md.
+# Install as .githooks/pre-push and arm it once per clone:
+#
+#     git config core.hooksPath .githooks
+#
+# Everything here is local. The stage list is explicit on purpose: a stage that
+# exists but never runs is a decoration, so `asan` (the second configuration),
+# `fuzz` (Harri's "quick fuzzing on push" — 60 s, CI_FUZZ_SECONDS to change it)
+# and `pristine` (a clean checkout of HEAD actually builds and passes) are named
+# here rather than left to the default list.
+#
+#   --require-clean  fails on uncommitted tracked changes: you publish commits,
+#                    not a working tree. The fuzz stage writes its corpus into
+#                    build-fuzz/ (gitignored) so this stays satisfiable.
+#
+# Deliberate bypass when you need one:  git push --no-verify
+#
+set -uo pipefail
+
+root=$(git rev-parse --show-toplevel) || exit 1
+
+if [ -x "$root/tools/ci.sh" ]; then
+    exec "$root/tools/ci.sh" \
+        --require-clean \
+        tree format build lint tests release asan fuzz pristine
+fi
+
+printf 'pre-push: no gate found. Expected %s/tools/ci.sh\n' "$root" >&2
+exit 1

@@ -1,0 +1,30 @@
+# FSMgine clang-tidy configuration — the `lint` stage of tools/ci.sh.
+#
+# Value-plus-Core-Guidelines: the suite's value-only families (bugprone, performance)
+# plus the C++ Core Guidelines checks that CODING_STANDARDS.md already makes mandatory
+# in prose — ownership, no malloc, no C-style casts, no reinterpret_cast, bounds.
+#
+# TWO Core Guidelines families are deliberately EXCLUDED. Measured on this tree
+# 2026-09-30, they are the only ones that fire, and both fire only in test code:
+#
+#   cppcoreguidelines-avoid-magic-numbers                     9 findings
+#       ("10 is a magic number" on a literal in a test; a literal 10 in a loop
+#        bound IS a magic number, but making it a named constant in a test adds
+#        ceremony and no safety. The suite's own jsonTools config warns that the
+#        full families produce ~120 findings "which is how a gate gets ignored".)
+#   cppcoreguidelines-non-private-member-variables-in-classes  6 findings
+#       (test-fixture members that the test needs to reach; the check wants
+#        private + accessors, which for a fixture is backwards.)
+#
+# Everything safety-relevant reports ZERO findings on the current tree, so this
+# config starts green with no baseline file and stays honest — a new safety
+# finding fails the gate, which is the point.
+#
+# Enable either excluded family with: tools/ci.sh lint --extra-checks <name>
+Checks: '-*,bugprone-*,-bugprone-easily-swappable-parameters,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-non-private-member-variables-in-classes,performance-*'
+
+# Which INCLUDED files get reported. Diagnostics in the analysed .cpp are always
+# reported; this only scopes header findings, so it must match FSMgine's own
+# headers and must NOT match a sibling checkout (a gate that fails on code this
+# repo cannot change is a gate you learn to bypass).
+HeaderFilterRegex: 'include/FSMgine/.*\.hpp$|FSMgine/(src|tests|fuzz|examples|benchmarks)/.*\.cpp$'

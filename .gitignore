@@ -53,3 +53,13 @@ cmake-build-*/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local CI (tools/ci.sh) — the gate's own footprint must never be a finding.
+# The `tree` stage fails if any of these is NOT ignored but exists.
+.ci-logs/
+# .ci/ holds the gate's state; the tidy BASELINE is the one tracked file in it
+# (an accepted-debt list that must travel with the repo, not a laptop artifact).
+.ci/*
+!.ci/tidy-baseline.txt
+.ci.env
+fuzz/corpus/
