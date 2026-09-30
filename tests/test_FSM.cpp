@@ -1,8 +1,8 @@
-#include <gtest/gtest.h>
-#include <thread>
 #include "FSMgine/FSM.hpp"
 #include "FSMgine/FSMBuilder.hpp"
 #include "FSMgine/StringInterner.hpp"
+#include <gtest/gtest.h>
+#include <thread>
 
 using namespace fsmgine;
 
@@ -35,9 +35,7 @@ TEST_F(FSMTest, SimpleTransition) {
     TestFSM fsm;
 
     // Build simple transition
-    fsm.get_builder()
-        .from("START")
-        .to("END");
+    fsm.get_builder().from("START").to("END");
 
     fsm.setInitialState("START");
     EXPECT_EQ(fsm.getCurrentState(), "START");
@@ -80,10 +78,7 @@ TEST_F(FSMTest, TransitionWithPredicate) {
 TEST_F(FSMTest, TransitionWithAction) {
     TestFSM fsm;
 
-    fsm.get_builder()
-        .from("START")
-        .action([this](const auto&) { action_call_count++; })
-        .to("END");
+    fsm.get_builder().from("START").action([this](const auto&) { action_call_count++; }).to("END");
 
     fsm.setInitialState("START");
     EXPECT_EQ(action_call_count, 0);
@@ -154,7 +149,7 @@ TEST_F(FSMTest, OnEnterActions) {
     EXPECT_FALSE(on_enter_called);
     fsm.setInitialState("START");
     EXPECT_TRUE(on_enter_called); // Called for START
-    on_enter_called = false; // reset
+    on_enter_called = false;      // reset
 
     fsm.process();
     EXPECT_FALSE(on_enter_called); // Not called for TARGET since no action was registered
@@ -274,13 +269,9 @@ TEST_F(FSMTest, ConcurrentStateAccess) {
     const int ITERATIONS = 1000;
 
     // Build a simple state machine
-    fsm.get_builder()
-        .from("A")
-        .to("B");
+    fsm.get_builder().from("A").to("B");
 
-    fsm.get_builder()
-        .from("B")
-        .to("A");
+    fsm.get_builder().from("B").to("A");
 
     fsm.setInitialState("A");
 
@@ -289,7 +280,7 @@ TEST_F(FSMTest, ConcurrentStateAccess) {
     // Create threads that both read and write concurrently
     // This tests for real race conditions like exceptions or corrupted state
     for (int i = 0; i < NUM_THREADS; ++i) {
-        threads.emplace_back([&fsm, &exceptions_caught, &invalid_states, &total_operations, ITERATIONS]() {
+        threads.emplace_back([&fsm, &exceptions_caught, &invalid_states, &total_operations]() {
             for (int j = 0; j < ITERATIONS; ++j) {
                 try {
                     // Mix of read and write operations to create contention
