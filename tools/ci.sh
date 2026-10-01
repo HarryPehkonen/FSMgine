@@ -471,8 +471,11 @@ stage_lint() {
     # fixed (prune it) or a NOLINT now suppresses it (which should say so at the site).
     # Without this, both mechanisms rot in silence — measured: clang-tidy does not warn
     # about a NOLINT that suppresses nothing.
+    # Only meaningful on a FULL subject: with --changed, lint analyses just the changed
+    # translation units, so every other file's key looks stale. Seen in the commit tier:
+    # 8 example mains reported stale while nothing was wrong with them.
     local stale=""
-    if [ -f "$CI_TIDY_BASELINE" ]; then
+    if [ "$SCOPE_ALL" = "1" ] && [ -f "$CI_TIDY_BASELINE" ]; then
         stale=$(comm -13 "$CI_LOG_DIR/tidy-keys.txt" \
                      <(grep -v '^#' "$CI_TIDY_BASELINE" | sort -u) || true)
     fi
