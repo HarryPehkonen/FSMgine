@@ -194,6 +194,31 @@ fsm.get_builder()
     .to("STATE_B");
 ```
 
+A transition with no predicate is **unconditional**: while the machine is in `STATE_A` it fires
+on *any* event, not merely on the events your other guards reject. That is a real feature
+(`Transition::predicatesPass()` returns true for an empty predicate list), so write it
+deliberately, and give it the last position among that state's transitions, because the
+**first matching transition wins**.
+
+### One Transition Per Chain: `to()` Ends It
+
+`to()` is the commit point: it moves the transition you have just built into the machine, and
+it returns `void` on purpose, so a chain continued after it does not compile (`invalid use of
+void`) instead of quietly doing the wrong thing.
+
+The builder is spent at `to()`. Start the next transition with a fresh `get_builder()`, or call
+`from()` again on the same builder — both work, because the FSMBuilder itself is not consumed:
+
+```cpp
+auto builder = fsm.get_builder();
+builder.from("STATE_A").predicate([](const EventType& e) { return e.type == "x"; }).to("STATE_B");
+builder.from("STATE_B").predicate([](const EventType& e) { return e.type == "y"; }).to("STATE_A");
+```
+
+Keep that `TransitionBuilder` in a variable and reuse it, though, and you are in trouble: after
+`to()` it holds an empty transition, and an empty transition has no guard, so a second `to()` on
+it registers a **catch-all**. `TransitionBuilder::to()` documents this, and the tests pin it.
+
 ## State Management
 
 FSMgine provides two methods for setting the current state:

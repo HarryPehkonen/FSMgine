@@ -120,6 +120,11 @@ private:
 // --- Implementation ---
 
 template <typename TEvent> bool Transition<TEvent>::predicatesPass(const TEvent& event) const {
+    // No predicates means no guard, which means "always": a transition built as
+    // from("A").to("B") with no predicate() is deliberately UNCONDITIONAL and fires on
+    // any event. Two consequences worth knowing: placed after a guarded transition it
+    // is a catch-all for whatever that guard rejects, and a builder reused after to()
+    // installs exactly that, silently — see TransitionBuilder::to().
     if (predicates_.empty()) {
         return true;
     }

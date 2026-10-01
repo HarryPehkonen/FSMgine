@@ -33,6 +33,17 @@ namespace fsmgine {
 ///    .action([](const Event& e) { std::cout << "Transitioning!"; })
 ///    .to("StateB");
 /// @endcode
+///
+/// @par This builder is single-use, and the chain ends at to()
+/// The flow is from() -> predicate()/action()* -> to(). to() is the commit point: it moves
+/// the accumulated predicates and actions into the machine and spends this builder. It
+/// returns void on purpose — see to() for why, and do not change that.
+///
+/// @par A transition with no predicate is deliberately unconditional
+/// `from("A").to("B")` with no predicate() fires on ANY event while the machine is in
+/// "A", not merely on the events other guards reject. That is a feature, not an accident
+/// (Transition::predicatesPass returns true for an empty predicate list) — write it only
+/// when that is what you mean.
 // short-lived builder: copy is deleted, both moves are defaulted, and nothing is owned.
 // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 template <typename TEvent> class TransitionBuilder {
@@ -61,17 +72,32 @@ public:
     /// @param pred A function that returns true if the transition should occur
     /// @return Reference to this builder for method chaining
     /// @note Multiple predicates can be added; all must pass for the transition to occur
+    /// @note A call made after to() is DISCARDED: the predicates were already moved
+    /// into the machine by then (see to()).
     TransitionBuilder& predicate(Predicate pred);
 
     /// @brief Adds an action to execute during the transition
     /// @param action A function to execute when this transition occurs
     /// @return Reference to this builder for method chaining
     /// @note Multiple actions can be added; they execute in the order added
+    /// @note A call made after to() is DISCARDED: the actions were already moved
+    /// into the machine by then (see to()).
     TransitionBuilder& action(Action action);
 
     /// @brief Completes the transition by specifying the target state
     /// @param state The target state for this transition
     /// @note This method finalizes and adds the transition to the FSM
+    ///
+    /// @par This is the commit point, and it returns void on purpose
+    /// The accumulated predicates and actions are MOVED into the machine, and this
+    /// builder is spent. Returning void is what makes that visible: a chain continued
+    /// after to() will not compile. Do NOT "improve" this to return a reference.
+    /// After the move the builder holds an EMPTY transition, and an empty predicate
+    /// list means "always true" (see Transition::predicatesPass) — so a second to()
+    /// on the same builder would silently install a CATCH-ALL transition that fires on
+    /// every event from that state, and predicate()/action() calls made after to()
+    /// would be silently discarded. Start the next transition with a fresh
+    /// get_builder().from(...). tests/test_FSM.cpp pins the return type and this.
     void to(const std::string& state);
 
 private:
@@ -137,6 +163,14 @@ public:
     /// @brief Starts building a transition from the specified state
     /// @param state The source state for the transition
     /// @return A TransitionBuilder for defining the transition details
+    /// @note Each call starts a NEW, independent transition. The returned
+    /// TransitionBuilder is spent once its chain reaches to(); the FSMBuilder itself is
+    /// not, so one of these can define several transitions:
+    /// @code{.cpp}
+    /// auto builder = fsm.get_builder();
+    /// builder.from("A").predicate([](const auto&) { return true; }).to("X");
+    /// builder.from("B").predicate([](const auto&) { return true; }).to("Y");
+    /// @endcode
     TransitionBuilder<TEvent> from(const std::string& state);
 
     /// @brief Adds an action to execute when entering a state

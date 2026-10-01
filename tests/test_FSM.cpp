@@ -3,6 +3,8 @@
 #include "FSMgine/StringInterner.hpp"
 #include <gtest/gtest.h>
 #include <thread>
+#include <type_traits>
+#include <utility>
 
 using namespace fsmgine;
 
@@ -240,6 +242,53 @@ TEST_F(FSMTest, FluentBuilderInterface) {
 
     fsm.process();
     EXPECT_EQ(action_call_count, 3); // onExit START + transition action
+}
+
+// --- The contract of TransitionBuilder::to() ------------------------------------------
+//
+// to() commits by MOVING the accumulated transition into the machine, and returns void so
+// that continuing a chain after it is a compile error rather than a silent bug. These tests
+// pin that decision. If someone "improves" to() to return a reference, the static_assert
+// below stops the build, and its message is the documentation.
+static_assert(std::is_void_v<decltype(std::declval<TransitionBuilder<std::monostate>&>().to("x"))>,
+              "TransitionBuilder::to() must return void. A reference would let a chain continue "
+              "after the transition has been moved into the machine, and since an empty "
+              "predicate list means 'always true', the next to() would install a catch-all.");
+
+// A transition with no predicate is unconditional: it fires on ANY event in that state.
+TEST_F(FSMTest, TransitionWithoutPredicateIsUnconditional) {
+    TestFSM fsm;
+    fsm.get_builder().from("A").to("B");
+    fsm.setInitialState("A");
+
+    EXPECT_TRUE(fsm.process());
+    EXPECT_EQ(fsm.getCurrentState(), "B");
+}
+
+// One FSMBuilder can define several transitions: from() starts a new one each time, and only
+// the TransitionBuilder is spent at to(). Also pins first-match-wins ordering.
+TEST_F(FSMTest, OneBuilderDefinesSeveralTransitions) {
+    TestFSM fsm;
+    auto builder = fsm.get_builder();
+    builder.from("A").predicate([](const std::monostate&) { return false; }).to("B");
+    builder.from("A").predicate([](const std::monostate&) { return true; }).to("C");
+    fsm.setInitialState("A");
+
+    EXPECT_TRUE(fsm.process());
+    EXPECT_EQ(fsm.getCurrentState(), "C");
+}
+
+// The subtle half of the same contract, and the reason to() must not invite a continuation:
+// the builder is spent, so a predicate added afterwards is discarded in silence.
+TEST_F(FSMTest, PredicateAddedAfterToIsDiscarded) {
+    TestFSM fsm;
+    auto tb = fsm.get_builder().from("A");
+    tb.predicate([](const std::monostate&) { return false; }).to("B");
+    tb.predicate([](const std::monostate&) { return true; }); // too late: already committed
+    fsm.setInitialState("A");
+
+    EXPECT_FALSE(fsm.process());
+    EXPECT_EQ(fsm.getCurrentState(), "A");
 }
 
 TEST_F(FSMTest, MoveSemantics) {
