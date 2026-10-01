@@ -27,4 +27,11 @@ Checks: '-*,bugprone-*,-bugprone-easily-swappable-parameters,cppcoreguidelines-*
 # reported; this only scopes header findings, so it must match FSMgine's own
 # headers and must NOT match a sibling checkout (a gate that fails on code this
 # repo cannot change is a gate you learn to bypass).
+# The fuzz harness catches std::exception ON PURPOSE: FSMgine's contract is that every
+# library error is an exception, so "anything that is not std::exception" is the bug
+# signal. Same shape as jsonTools' AllowEmptyCatchForExceptions for its probe catches.
+CheckOptions:
+  - key: bugprone-empty-catch.AllowEmptyCatchForExceptions
+    value: 'std::exception'
+
 HeaderFilterRegex: 'include/FSMgine/.*\.hpp$|FSMgine/(src|tests|fuzz|examples|benchmarks)/.*\.cpp$'

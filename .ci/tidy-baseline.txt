@@ -3,6 +3,42 @@
 # reformat, and a line-keyed baseline stops matching without saying so.
 # Fix a finding, then delete its line here. Any key NOT in this file FAILS the
 # gate, so this list is a debt to pay down, not a permission slip.
+benchmarks/simple_timer_benchmark.cpp:bugprone-exception-escape
+benchmarks/simple_timer_benchmark.cpp:bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions
+examples/calculator.cpp:bugprone-exception-escape
+examples/calculator.cpp:cppcoreguidelines-init-variables
+examples/calculator.cpp:cppcoreguidelines-use-default-member-init
+examples/calculator.cpp:performance-avoid-endl
+examples/calculator.cpp:performance-enum-size
+examples/no_class_functional.cpp:bugprone-exception-escape
+examples/no_class_functional.cpp:cppcoreguidelines-avoid-non-const-global-variables
+examples/no_class_functional.cpp:cppcoreguidelines-init-variables
+examples/no_class_functional.cpp:performance-avoid-endl
+examples/other_class_eventful.cpp:bugprone-exception-escape
+examples/other_class_eventful.cpp:cppcoreguidelines-init-variables
+examples/other_class_eventful.cpp:performance-avoid-endl
+examples/other_class_instance.cpp:bugprone-exception-escape
+examples/other_class_instance.cpp:cppcoreguidelines-init-variables
+examples/other_class_instance.cpp:cppcoreguidelines-use-default-member-init
+examples/other_class_instance.cpp:performance-avoid-endl
+examples/parentheses_checker.cpp:bugprone-exception-escape
+examples/parentheses_checker.cpp:cppcoreguidelines-init-variables
+examples/parentheses_checker.cpp:performance-avoid-endl
+examples/protocol_parser.cpp:bugprone-exception-escape
+examples/protocol_parser.cpp:cppcoreguidelines-pro-type-member-init
+examples/protocol_parser.cpp:performance-avoid-endl
+examples/resource_pool_example.cpp:bugprone-exception-escape
+examples/resource_pool_example.cpp:performance-avoid-endl
+examples/resource_pool_example.cpp:performance-inefficient-vector-operation
+examples/turnstile_example.cpp:bugprone-exception-escape
+examples/turnstile_example.cpp:performance-enum-size
+fuzz/fuzz_fsm.cpp:bugprone-switch-missing-default-case
+fuzz/fuzz_fsm.cpp:cppcoreguidelines-avoid-c-arrays
+fuzz/fuzz_fsm.cpp:cppcoreguidelines-avoid-non-const-global-variables
+fuzz/fuzz_fsm.cpp:cppcoreguidelines-pro-bounds-constant-array-index
+fuzz/fuzz_fsm.cpp:cppcoreguidelines-pro-bounds-pointer-arithmetic
+fuzz/retention_check.cpp:bugprone-implicit-widening-of-multiplication-result
+fuzz/retention_check.cpp:performance-avoid-endl
 include/FSMgine/FSMBuilder.hpp:cppcoreguidelines-avoid-const-or-ref-data-members
 include/FSMgine/FSMBuilder.hpp:cppcoreguidelines-special-member-functions
 include/FSMgine/FSM.hpp:cppcoreguidelines-prefer-member-initializer

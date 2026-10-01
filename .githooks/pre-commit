@@ -24,7 +24,7 @@ set -uo pipefail
 root=$(git rev-parse --show-toplevel) || exit 1
 
 if [ -x "$root/tools/ci.sh" ]; then
-    exec "$root/tools/ci.sh" --changed format build lint tests
+    exec "$root/tools/ci.sh" --changed dbs format build lint tests
 fi
 
 # No gate found is a failure, not a warning: a silently unarmed gate is worse than

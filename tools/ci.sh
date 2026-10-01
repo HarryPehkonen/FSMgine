@@ -74,6 +74,35 @@ CI_SOURCE_GLOBS=${CI_SOURCE_GLOBS:-"'*.cpp' '*.cc' '*.cxx' '*.hpp' '*.hh' '*.h'"
 CI_FUZZ_SECONDS=${CI_FUZZ_SECONDS:-60}         # "quick fuzzing on push" = 60 s
 CI_TEST_CMD=${CI_TEST_CMD:-"ctest --test-dir $CI_BUILD_DIR --output-on-failure -j $CI_JOBS"}
 CI_TIDY_BASELINE=${CI_TIDY_BASELINE:-.ci/tidy-baseline.txt}
+# Compile EVERY tracked source. examples/ and benchmarks/ are OFF in the project's own
+# defaults, so without this the gate never compiles 10 of the 24 tracked sources and
+# reports a green over a subject it never looked at. Measured 2026-09-30: turning them on
+# found 21 unused-parameter errors (gcc and clang alike) plus 2 dead `this` captures
+# (clang-only) in code that had never been compiled.
+CI_CMAKE_EXTRA_FLAGS=${CI_CMAKE_EXTRA_FLAGS:-"-DBUILD_EXAMPLES=ON -DBUILD_BENCHMARKS=ON"}
+# Every database the lint stage unions, so a TU cannot hide in a build directory the gate
+# forgot about (the fuzz targets have their own).
+CI_LINT_DBS=${CI_LINT_DBS:-"$CI_BUILD_DIR/compile_commands.json $CI_RELEASE_BUILD_DIR/compile_commands.json $CI_FUZZ_BUILD_DIR/compile_commands.json"}
+# Tracked sources that NO target compiles, each with the honest reason — named here
+# rather than left silent, and reprinted on every green lint so they can never become
+# invisible:
+#   tests/simple_test_runner.cpp  — dead code: nothing includes it and no CMakeLists
+#                                   mentions it (flagged 2026-09-30, your call)
+#   benchmarks/bench_FSM.cpp,
+#   benchmarks/bench_StringInterner.cpp
+#                                 — gated on Google Benchmark, which is NOT installed.
+#                                   FSMgine's own CMake prints the remedy and falls back
+#                                   to simple_timer_benchmark.cpp. NOT installed on
+#                                   purpose: the gate would then depend on an optional
+#                                   dev package, which is a bad deal for a public repo.
+CI_UNBUILT_OK=${CI_UNBUILT_OK:-"tests/simple_test_runner.cpp benchmarks/bench_FSM.cpp benchmarks/bench_StringInterner.cpp"}
+# ONE definition of each configuration's configure flags, used by BOTH the `dbs` stage
+# (which only configures, to make every compile database exist) and the stage that
+# builds it. Two spellings of the same flags is exactly the drift the gate exists to stop.
+CI_CFG_COMMON=${CI_CFG_COMMON:-"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON $CI_CMAKE_EXTRA_FLAGS"}
+CI_CFG_BUILD=${CI_CFG_BUILD:-"-DCMAKE_BUILD_TYPE=${CI_BUILD_TYPE:-Release}"}
+CI_CFG_RELEASE=${CI_CFG_RELEASE:-"-DCMAKE_BUILD_TYPE=$CI_RELEASE_BUILD_TYPE -DCMAKE_CXX_COMPILER=$CI_RELEASE_BUILD_CXX"}
+CI_CFG_FUZZ=${CI_CFG_FUZZ:-"-DFSMGINE_BUILD_FUZZING=ON -DFSMGINE_BUILD_MULTITHREADED=OFF -DBUILD_TESTING=OFF -DCMAKE_CXX_COMPILER=clang++"}
 # Paths that are never our source, even when git tracks them: build-asan/ holds 61
 # TRACKED files (committed by accident), including CMake's generated
 # CompilerIdCXX/CMakeCXXCompilerId.cpp — which no formatter can ever satisfy, because
@@ -107,6 +136,8 @@ Stages:
   format      clang-format drift — dry run against the repo .clang-format
   build       cmake configure (with a compile database) + build; counts warnings
   lint        clang-tidy across the database's translation units
+  dbs         configure-only: makes every compile database exist so that `lint` can
+              union them AND still name any tracked source no database covers
   tests       the test suite (ctest), every failure reported
   release     the SAME code in a SECOND configuration: clang++ with -O2, warning-free.
               A different COMPILER on purpose — the default build is gcc, and a
@@ -209,11 +240,32 @@ stage_format() {
     note "no drift across $(printf '%s\n' $files | wc -l) file(s)"
 }
 
+stage_dbs() {
+    stage_banner dbs
+    have cmake || block "cmake not installed"
+    # Configure-only, purely so every compile database EXISTS. The lint stage unions them
+    # and fails on a tracked source that no database covers — but a database written by a
+    # LATER stage would make that check report files it simply had not seen yet. Ordering
+    # the gate around a check is the wrong fix; making the check's inputs exist is the
+    # right one. Each configure is ~0.05 s.
+    local d ok=1
+    for d in "$CI_BUILD_DIR:$CI_CFG_BUILD" "$CI_RELEASE_BUILD_DIR:$CI_CFG_RELEASE" \
+             "$CI_FUZZ_BUILD_DIR:$CI_CFG_FUZZ"; do
+        # shellcheck disable=SC2086
+        cmake -B "${d%%:*}" ${d##*:} $CI_CFG_COMMON > "$CI_LOG_DIR/dbs-$(basename "${d%%:*}").log" 2>&1 || {
+            note "configure failed for ${d%%:*} (log: $CI_LOG_DIR/dbs-$(basename "${d%%:*}").log)"
+            ok=0
+        }
+    done
+    [ "$ok" = "1" ] || return 1
+    note "compile databases ready for the lint stage"
+    return 0
+}
+
 stage_build() {
     stage_banner build
     have cmake || block "cmake not installed"
-    if ! cmake -B "$CI_BUILD_DIR" -DCMAKE_BUILD_TYPE="${CI_BUILD_TYPE:-Release}" \
-               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON > "$CI_LOG_DIR/configure.log" 2>&1; then
+    if ! cmake -B "$CI_BUILD_DIR" $CI_CFG_BUILD $CI_CFG_COMMON > "$CI_LOG_DIR/configure.log" 2>&1; then
         tail -25 "$CI_LOG_DIR/configure.log" | sed 's/^/  /'
         note "configure failed (log: $CI_LOG_DIR/configure.log)"
         return 1
@@ -239,14 +291,35 @@ stage_lint() {
     have clang-tidy || { [ "$CI_STRICT_TOOLS" = "1" ] && block "clang-tidy not installed"; note "SKIP: clang-tidy not installed"; return 0; }
     have python3 || block "python3 not installed (needed to read the compile database)"
     [ -f .clang-tidy ] || block "no .clang-tidy in the repo root — the lint stage has no definition"
-    local db="$CI_BUILD_DIR/compile_commands.json"
-    [ -f "$db" ] || block "no compile database at $db — the build stage must run first"
-    local tus
-    tus=$(python3 -c "import json,sys;print('\n'.join(sorted({e['file'] for e in json.load(open(sys.argv[1]))})))" "$db" \
-          | grep -E '/(src|tests|fuzz|examples|benchmarks)/' || true)
+    local db tus
+    tus=""
+    for db in $CI_LINT_DBS; do
+        [ -f "$db" ] || continue
+        # ABSOLUTE paths here on purpose: clang-tidy maps the file back to its compile
+        # command via that exact string, so feeding it a rewritten path finds no entry.
+        tus="$tus$(python3 -c "import json,sys;print('\n'.join(sorted({e['file'] for e in json.load(open(sys.argv[1]))})))" "$db" || true)
+"
+    done
+    tus=$(printf '%s' "$tus" | sort -u | grep -E '/(src|tests|fuzz|examples|benchmarks)/' || true)
     # A database that EXISTS may not COVER your sources (JSOM's scoped export taught
     # this): assert before trusting a clean result.
-    [ -n "$tus" ] || block "$db exists but covers none of this repo's sources"
+    [ -n "$tus" ] || block "no compile database covered any of this repo's sources"
+    # Subject coverage, the same lesson one level up: a tracked .cpp that no target
+    # compiles cannot be linted, so a clean lint that simply excludes it is a false pass.
+    # Exemptions must be named in CI_UNBUILT_OK, not achieved by silence. (Comparison is
+    # in repo-relative paths; the TU list stays absolute for clang-tidy.)
+    local uncovered tracked covered
+    tracked=$(git ls-files '*.cpp' '*.cc' '*.cxx' | grep -vE "$CI_SOURCE_EXCLUDE" || true)
+    covered=$( { printf '%s\n' $tus | sed "s|^$REPO_ROOT/||"; printf '%s\n' $CI_UNBUILT_OK | tr ' ' '\n'; } | sort -u)
+    uncovered=$(comm -23 <(printf '%s\n' $tracked | sort -u) <(printf '%s\n' "$covered") || true)
+    if [ -n "$uncovered" ]; then
+        note "tracked .cpp file(s) that NO target compiles — unlintable, so not a pass:"
+        printf '%s\n' $uncovered | sed 's/^/    /'
+        note "wire them into a target, or list them in CI_UNBUILT_OK with a reason"
+        return 1
+    fi
+    # Never let an exemption be invisible: it is printed on every green run.
+    [ -n "$CI_UNBUILT_OK" ] && note "exempt from compilation (see CI_UNBUILT_OK): $(printf '%s ' $CI_UNBUILT_OK)"
     if [ "$SCOPE_ALL" = "0" ]; then
         local changed keep="" t base
         changed=$(scoped_sources)
@@ -297,8 +370,14 @@ stage_lint() {
     fi
     if [ -n "$newfindings" ]; then
         printf '%s\n' "$newfindings" | sed 's/^/  NEW finding: /'
-        grep "warning:" "$CI_LOG_DIR/tidy.log" | head -20 | sed 's/^/  /'
-        note "messages in $CI_LOG_DIR/tidy.log; if these are inherited, accept with: tools/ci.sh --write-tidy-baseline lint"
+        # Show the MESSAGE for the new ones only: a wall of inherited warnings buries
+        # the two lines that actually failed the stage.
+        while read -r key; do
+            [ -n "$key" ] || continue
+            grep -F "${key%%:*}" "$CI_LOG_DIR/tidy.log" | grep -F "[${key##*:}]" \
+                | head -3 | sed 's/^/    /'
+        done <<< "$newfindings"
+        note "full log: $CI_LOG_DIR/tidy.log — accept inherited ones with: tools/ci.sh --write-tidy-baseline lint"
         return 1
     fi
     note "0 new findings across $(printf '%s\n' $tus | wc -l) translation unit(s) \
@@ -339,9 +418,8 @@ stage_asan() {
 stage_fuzz() {
     stage_banner fuzz
     have clang++ || block "clang++ not installed (libFuzzer needs clang)"
-    if ! cmake -B "$CI_FUZZ_BUILD_DIR" -DFSMGINE_BUILD_FUZZING=ON \
-               -DFSMGINE_BUILD_MULTITHREADED=OFF -DBUILD_TESTING=OFF \
-               -DCMAKE_CXX_COMPILER=clang++ > "$CI_LOG_DIR/fuzz-configure.log" 2>&1; then
+    if ! cmake -B "$CI_FUZZ_BUILD_DIR" $CI_CFG_FUZZ $CI_CFG_COMMON \
+               > "$CI_LOG_DIR/fuzz-configure.log" 2>&1; then
         tail -20 "$CI_LOG_DIR/fuzz-configure.log" | sed 's/^/  /'; return 1
     fi
     if ! cmake --build "$CI_FUZZ_BUILD_DIR" --target fuzz_fsmgine -j"$CI_JOBS" \
@@ -393,8 +471,7 @@ stage_release() {
     stage_banner release
     have cmake || block "cmake not installed"
     have "$CI_RELEASE_BUILD_CXX" || block "$CI_RELEASE_BUILD_CXX not installed"
-    if ! cmake -B "$CI_RELEASE_BUILD_DIR" -DCMAKE_BUILD_TYPE="$CI_RELEASE_BUILD_TYPE" \
-               -DCMAKE_CXX_COMPILER="$CI_RELEASE_BUILD_CXX" \
+    if ! cmake -B "$CI_RELEASE_BUILD_DIR" $CI_CFG_RELEASE $CI_CFG_COMMON \
                > "$CI_LOG_DIR/release-configure.log" 2>&1; then
         tail -20 "$CI_LOG_DIR/release-configure.log" | sed 's/^/  /'
         note "release configure failed"
@@ -425,6 +502,7 @@ run_stage() {
         build) stage_build ;;
         lint) stage_lint ;;
         tests) stage_tests ;;
+        dbs)        stage_dbs ;;
         release) stage_release ;;
         asan) stage_asan ;;
         fuzz) stage_fuzz ;;
