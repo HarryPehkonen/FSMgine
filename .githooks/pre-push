@@ -26,7 +26,7 @@ root=$(git rev-parse --show-toplevel) || exit 1
 if [ -x "$root/tools/ci.sh" ]; then
     exec "$root/tools/ci.sh" \
         --require-clean \
-        tree format dbs build lint tests coverage release asan fuzz pristine
+        tree format docexamples dbs build lint tests coverage release asan fuzz pristine
 fi
 
 printf 'pre-push: no gate found. Expected %s/tools/ci.sh\n' "$root" >&2

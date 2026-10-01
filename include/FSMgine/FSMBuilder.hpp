@@ -95,20 +95,22 @@ private:
 ///
 /// @par Example
 /// @code{.cpp}
-/// FSM<MyEvent> fsm;
+/// fsm::FSM<MyEvent> fsm;
+///
+/// // State actions attach to the machine, not to a single transition
 /// fsm.get_builder()
-///     // Define state actions
 ///     .onEnter("Idle", [](const MyEvent&) { std::cout << "Entering Idle\n"; })
-///     .onExit("Idle", [](const MyEvent&) { std::cout << "Leaving Idle\n"; })
+///     .onExit("Idle", [](const MyEvent&) { std::cout << "Leaving Idle\n"; });
 ///
-///     // Define transitions
+/// // Transitions: to() ends a chain, so each one starts from get_builder()
+/// fsm.get_builder()
 ///     .from("Idle")
-///         .predicate([](const MyEvent& e) { return e.type == "start"; })
-///         .to("Running")
-///
+///     .predicate([](const MyEvent& e) { return e.type == "start"; })
+///     .to("Running");
+/// fsm.get_builder()
 ///     .from("Running")
-///         .predicate([](const MyEvent& e) { return e.type == "stop"; })
-///         .to("Idle");
+///     .predicate([](const MyEvent& e) { return e.type == "stop"; })
+///     .to("Idle");
 ///
 /// fsm.setInitialState("Idle");
 /// @endcode

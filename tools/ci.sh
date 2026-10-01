@@ -146,6 +146,8 @@ Stages:
   format      clang-format drift — dry run against the repo .clang-format
   build       cmake configure (with a compile database) + build; counts warnings
   lint        clang-tidy across the database's translation units
+  docexamples every C++ example in README.md and include/**.hpp must compile — a
+              documented example is an executable claim, and doc rot is invisible
   dbs         configure-only: makes every compile database exist so that `lint` can
               union them AND still name any tracked source no database covers
   coverage    source-based coverage (clang) over the LIBRARY, gated on MISSED LINES PER
@@ -311,6 +313,22 @@ stage_coverage() {
         note "no file lost coverage (baseline: $CI_COV_BASELINE)"
     fi
     return 0
+}
+
+stage_docexamples() {
+    stage_banner docexamples
+    have python3 || block "python3 not installed (the doc-example checker needs it)"
+    have g++ || block "g++ not installed"
+    # A documented example is an executable claim. Every C++ block in README.md and
+    # include/**.hpp must compile, or an agent (or a reader) copies broken code.
+    python3 "$REPO_ROOT/tools/check_doc_examples.py" > "$CI_LOG_DIR/docexamples.log" 2>&1
+    local rc=$?
+    tail -14 "$CI_LOG_DIR/docexamples.log" | sed 's/^/  /'
+    if [ "$rc" != "0" ]; then
+        note "a documented example does not compile (log: $CI_LOG_DIR/docexamples.log)"
+        return 1
+    fi
+    note "every documented example compiles"
 }
 
 stage_dbs() {
@@ -604,6 +622,7 @@ run_stage() {
         lint) stage_lint ;;
         tests) stage_tests ;;
         dbs)        stage_dbs ;;
+        docexamples) stage_docexamples ;;
         coverage)   stage_coverage ;;
         release) stage_release ;;
         asan) stage_asan ;;

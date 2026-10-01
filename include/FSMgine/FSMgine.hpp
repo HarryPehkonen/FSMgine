@@ -23,10 +23,11 @@
 /// @code{.cpp}
 /// #include <FSMgine/FSMgine.hpp>
 ///
-/// // Event-less FSM example
+/// // Event-less FSM example. to() ends a chain, so each transition starts a new one.
 /// fsm::EventlessFSM turnstile;
 /// turnstile.get_builder()
-///     .from("Locked").predicate([](const auto&) { return true; }).to("Unlocked")
+///     .from("Locked").predicate([](const auto&) { return true; }).to("Unlocked");
+/// turnstile.get_builder()
 ///     .from("Unlocked").predicate([](const auto&) { return true; }).to("Locked");
 ///
 /// turnstile.setInitialState("Locked");

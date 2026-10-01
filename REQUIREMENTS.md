@@ -1,5 +1,12 @@
 # FSMgine Specifications
 
+> **HISTORICAL DESIGN DOCUMENT — NOT THE CURRENT API.** The interface sketches below
+> predate the implementation: they show `step()`, `when()`, `build()` and
+> `std::function<bool()>` predicates, none of which exist in the library today. For the
+> current API see `README.md` and the headers in `include/FSMgine/`. This file is kept
+> for the design record, and `tools/check_doc_examples.py` excludes it by name for
+> exactly this reason — every example in README.md and the headers must compile.
+
 ## Overview
 FSMgine is a C++ library for building and managing Finite State Machines (FSMs). It provides a fluent builder interface for defining states, transitions, and actions, with robust support for live editing via a thread-safe architecture and string interning to optimize memory usage.
 

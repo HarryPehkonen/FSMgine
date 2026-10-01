@@ -77,12 +77,17 @@ public:
 /// // Define an event type
 /// struct Event { std::string type; };
 ///
-/// // Create an FSM
-/// FSM<Event> machine;
+/// // Create and build an FSM. to() ends a chain, so each transition starts a new one.
+/// fsm::FSM<Event> machine;
 /// machine.get_builder()
-///     .from("Idle").to("Working").when([](const Event& e) { return e.type == "start"; })
-///     .from("Working").to("Idle").when([](const Event& e) { return e.type == "stop"; })
-///     .build("Idle");
+///     .from("Idle")
+///     .predicate([](const Event& e) { return e.type == "start"; })
+///     .to("Working");
+/// machine.get_builder()
+///     .from("Working")
+///     .predicate([](const Event& e) { return e.type == "stop"; })
+///     .to("Idle");
+/// machine.setInitialState("Idle");
 ///
 /// // Process events
 /// machine.process(Event{"start"});  // Transitions to "Working"
@@ -160,8 +165,9 @@ public:
     /// @par Example
     /// @code{.cpp}
     /// fsm.get_builder()
-    ///    .from("A").to("B").when([](const auto& e) { return true; })
-    ///    .build("A");
+    ///    .from("A")
+    ///    .predicate([](const auto& e) { return true; })
+    ///    .to("B");
     /// @endcode
     FSMBuilder<TEvent> get_builder();
 

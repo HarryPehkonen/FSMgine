@@ -148,6 +148,8 @@ int main() {
 For larger applications, it's best practice to encapsulate the FSM and its related state within a class. This provides a clean public API and hides implementation details.
 
 ```cpp
+using namespace fsmgine;
+
 class Turnstile {
 public:
     Turnstile() {
@@ -221,6 +223,8 @@ interner ever handed out**. Call it between independent workloads, when nothing
 holds an outstanding view:
 
 ```cpp
+using namespace fsmgine;   // each example stands on its own
+
 auto& interner = StringInterner::instance();
 // ... work with interned names ...
 interner.reset();   // arena released; every previous view is now dangling
