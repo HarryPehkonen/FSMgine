@@ -145,7 +145,7 @@ cmd_notes() {
         printf '| TODO: compiles against the public headers (signatures, headers, macros) | | |\n'
         printf '| TODO: behaves the same at run time for the same input | | |\n'
         printf '| TODO: builds and packages (CMake targets, find_package version, options) | | |\n'
-        printf '| TODO: anything removed, renamed, or newly required | | |\n'
+        printf '| TODO: anything removed, renamed, or newly required — and say explicitly when something still exists but CHANGED | | |\n'
         printf '| TODO: ABI/soname, if anything crosses the library boundary | | |\n\n'
         if [ -n "$(breaking_commits)" ]; then
             printf '## Breaking changes\n\n'
