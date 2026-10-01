@@ -36,8 +36,10 @@ namespace fsmgine {
 ///
 /// @par This builder is single-use, and the chain ends at to()
 /// The flow is from() -> predicate()/action()* -> to(). to() is the commit point: it moves
-/// the accumulated predicates and actions into the machine and spends this builder. It
-/// returns void on purpose — see to() for why, and do not change that.
+/// the accumulated predicates and actions into the machine and spends this builder, and it
+/// returns void on purpose — see to() for why, and do not change that. Using the builder
+/// after that — predicate(), action() or to() again — throws FSMBuildError rather than
+/// silently building something you did not describe.
 ///
 /// @par A transition with no predicate is deliberately unconditional
 /// `from("A").to("B")` with no predicate() fires on ANY event while the machine is in
@@ -72,16 +74,16 @@ public:
     /// @param pred A function that returns true if the transition should occur
     /// @return Reference to this builder for method chaining
     /// @note Multiple predicates can be added; all must pass for the transition to occur
-    /// @note A call made after to() is DISCARDED: the predicates were already moved
-    /// into the machine by then (see to()).
+    /// @note A call after to() THROWS FSMBuildError: the predicates were already moved
+    /// into the machine by then, and reusing the builder is a programming error (see to()).
     TransitionBuilder& predicate(Predicate pred);
 
     /// @brief Adds an action to execute during the transition
     /// @param action A function to execute when this transition occurs
     /// @return Reference to this builder for method chaining
     /// @note Multiple actions can be added; they execute in the order added
-    /// @note A call made after to() is DISCARDED: the actions were already moved
-    /// into the machine by then (see to()).
+    /// @note A call after to() THROWS FSMBuildError: the actions were already moved
+    /// into the machine by then, and reusing the builder is a programming error (see to()).
     TransitionBuilder& action(Action action);
 
     /// @brief Completes the transition by specifying the target state
@@ -94,9 +96,9 @@ public:
     /// after to() will not compile. Do NOT "improve" this to return a reference.
     /// After the move the builder holds an EMPTY transition, and an empty predicate
     /// list means "always true" (see Transition::predicatesPass) — so a second to()
-    /// on the same builder would silently install a CATCH-ALL transition that fires on
-    /// every event from that state, and predicate()/action() calls made after to()
-    /// would be silently discarded. Start the next transition with a fresh
+    /// on the same builder would install a CATCH-ALL transition firing on every event from
+    /// that state. Calling predicate(), action() or to() again now throws FSMBuildError
+    /// instead of doing that silently. Start the next transition with a fresh
     /// get_builder().from(...). tests/test_FSM.cpp pins the return type and this.
     void to(const std::string& state);
 
@@ -107,6 +109,22 @@ private:
     FSM<TEvent>& fsm_;
     std::string_view from_state_;
     Transition<TEvent> transition_;
+    // Set by to(): the transition has been moved into the machine, so this builder must not
+    // be used again. Without the flag a second to() would register an EMPTY transition, and
+    // an empty predicate list means "always true" — an unconditional, catch-all transition.
+    bool committed_ = false;
+
+    /// @brief Throws FSMBuildError if to() has already committed this transition
+    /// @param method The calling method's name, for the message
+    /// @throws FSMBuildError when this builder is spent
+    void requireUncommitted(const char* method) const {
+        if (committed_) {
+            throw FSMBuildError(
+                std::string("TransitionBuilder::") + method
+                + "() called after to(): this builder is spent. A builder builds "
+                  "one transition; start the next one with get_builder().from(state).");
+        }
+    }
 };
 
 /// @brief Main builder class for constructing FSMs with a fluent interface
@@ -201,22 +219,26 @@ TransitionBuilder<TEvent>::TransitionBuilder(FSM<TEvent>& fsm, std::string_view 
 
 template <typename TEvent>
 TransitionBuilder<TEvent>& TransitionBuilder<TEvent>::predicate(Predicate pred) {
+    requireUncommitted("predicate");
     transition_.addPredicate(std::move(pred));
     return *this;
 }
 
 template <typename TEvent>
 TransitionBuilder<TEvent>& TransitionBuilder<TEvent>::action(Action action) {
+    requireUncommitted("action");
     transition_.addAction(std::move(action));
     return *this;
 }
 
 template <typename TEvent> void TransitionBuilder<TEvent>::to(const std::string& state) {
+    requireUncommitted("to");
     // Optimization: Cache StringInterner reference
     auto& interner = StringInterner::instance();
     auto interned_state = interner.intern(state);
     transition_.setTargetState(interned_state);
     fsm_.addTransition(from_state_, std::move(transition_));
+    committed_ = true; // after the commit, so a throw above leaves the builder usable
 }
 
 // FSMBuilder

@@ -54,6 +54,23 @@ public:
     explicit FSMInvalidStateError(const std::string& message) : std::invalid_argument(message) {}
 };
 
+/// @brief Exception thrown when a TransitionBuilder is used after it has been committed
+/// @ingroup core
+///
+/// @details A TransitionBuilder builds exactly one transition, and to() commits it: the
+/// builder is spent afterwards. Calling to() a second time — or predicate()/action() after
+/// it — is a programming error, and it is thrown rather than ignored because ignoring it is
+/// silently wrong: after the move the builder holds an EMPTY transition, and an empty
+/// predicate list means "always true" (Transition::predicatesPass), so a second to() would
+/// register an unconditional transition that fires on events no guard ever mentioned.
+/// Start the next transition with a fresh get_builder().from(...).
+class FSMBuildError : public std::logic_error {
+public:
+    /// @brief Constructs an exception for a builder that has already been committed
+    /// @param message Detailed error message
+    explicit FSMBuildError(const std::string& message) : std::logic_error(message) {}
+};
+
 /// @brief A high-performance finite state machine implementation
 /// @tparam TEvent The event type used for transitions (defaults to std::monostate for event-less
 /// FSMs)

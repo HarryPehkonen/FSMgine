@@ -215,9 +215,11 @@ builder.from("STATE_A").predicate([](const EventType& e) { return e.type == "x";
 builder.from("STATE_B").predicate([](const EventType& e) { return e.type == "y"; }).to("STATE_A");
 ```
 
-Keep that `TransitionBuilder` in a variable and reuse it, though, and you are in trouble: after
+Keep that `TransitionBuilder` in a variable and reuse it, though, and you will be told so: after
 `to()` it holds an empty transition, and an empty transition has no guard, so a second `to()` on
-it registers a **catch-all**. `TransitionBuilder::to()` documents this, and the tests pin it.
+it would register a **catch-all**. That is a programming error, so it throws `FSMBuildError` —
+as does calling `predicate()` or `action()` after `to()`. `TransitionBuilder::to()` documents
+this, and the tests pin it.
 
 ## State Management
 

@@ -278,17 +278,37 @@ TEST_F(FSMTest, OneBuilderDefinesSeveralTransitions) {
     EXPECT_EQ(fsm.getCurrentState(), "C");
 }
 
-// The subtle half of the same contract, and the reason to() must not invite a continuation:
-// the builder is spent, so a predicate added afterwards is discarded in silence.
-TEST_F(FSMTest, PredicateAddedAfterToIsDiscarded) {
+// The builder is SPENT at to(). Every way of using it afterwards is a programming error, and
+// each one says so instead of being ignored: a second to() would otherwise register an
+// unconditional (catch-all) transition, because the moved-from transition has no predicates
+// and an empty predicate list means "always true".
+TEST_F(FSMTest, SecondToOnTheSameBuilderThrows) {
+    TestFSM fsm;
+    auto tb = fsm.get_builder().from("A");
+    tb.predicate([](const std::monostate&) { return true; }).to("B");
+
+    EXPECT_THROW(tb.to("C"), FSMBuildError);
+
+    // The transition that WAS committed is untouched: the machine still goes to B.
+    fsm.setInitialState("A");
+    EXPECT_TRUE(fsm.process());
+    EXPECT_EQ(fsm.getCurrentState(), "B");
+}
+
+TEST_F(FSMTest, PredicateAfterToThrows) {
     TestFSM fsm;
     auto tb = fsm.get_builder().from("A");
     tb.predicate([](const std::monostate&) { return false; }).to("B");
-    tb.predicate([](const std::monostate&) { return true; }); // too late: already committed
-    fsm.setInitialState("A");
 
-    EXPECT_FALSE(fsm.process());
-    EXPECT_EQ(fsm.getCurrentState(), "A");
+    EXPECT_THROW(tb.predicate([](const std::monostate&) { return true; }), FSMBuildError);
+}
+
+TEST_F(FSMTest, ActionAfterToThrows) {
+    TestFSM fsm;
+    auto tb = fsm.get_builder().from("A");
+    tb.to("B");
+
+    EXPECT_THROW(tb.action([](const std::monostate&) {}), FSMBuildError);
 }
 
 TEST_F(FSMTest, MoveSemantics) {

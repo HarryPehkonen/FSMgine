@@ -144,6 +144,7 @@ Stages:
   tree        the gate's own footprint is ignored; --require-clean also fails on
               uncommitted changes to tracked files
   format      clang-format drift — dry run against the repo .clang-format
+  version     the declared version must never be behind the newest v* tag
   build       cmake configure (with a compile database) + build; counts warnings
   lint        clang-tidy across the database's translation units
   docexamples every C++ example in README.md, CLAUDE.md and include/**.hpp must
@@ -314,6 +315,31 @@ stage_coverage() {
         note "no file lost coverage (baseline: $CI_COV_BASELINE)"
     fi
     return 0
+}
+
+stage_version() {
+    stage_banner version
+    have git || block "git not installed"
+    # The declared version must never be BEHIND the newest tag: tags are what a consumer
+    # resolves, and this repo once declared 1.0.1 while v1.3.1 was already tagged, which
+    # made "the next minor bump" ambiguous. A clone without tags skips with a note, so a
+    # shallow checkout is not failed for a check it cannot run.
+    local declared newest
+    declared=$(sed -n 's/^project(FSMgine VERSION \([0-9][0-9.]*\).*/\1/p' "$REPO_ROOT/CMakeLists.txt" | head -1)
+    [ -n "$declared" ] || {
+        note "no version found in CMakeLists.txt"
+        return 1
+    }
+    newest=$(cd "$REPO_ROOT" && git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//')
+    if [ -z "$newest" ]; then
+        note "declared $declared; no v* tag in this clone, so drift is not checked"
+        return 0
+    fi
+    note "declared $declared, newest tag v$newest"
+    if [ "$(printf '%s\n%s\n' "$newest" "$declared" | sort -V | tail -1)" != "$declared" ]; then
+        note "CMakeLists.txt declares $declared but v$newest is already tagged: bump the declared version"
+        return 1
+    fi
 }
 
 stage_docexamples() {
@@ -623,6 +649,7 @@ run_stage() {
         lint) stage_lint ;;
         tests) stage_tests ;;
         dbs)        stage_dbs ;;
+        version)    stage_version ;;
         docexamples) stage_docexamples ;;
         coverage)   stage_coverage ;;
         release) stage_release ;;

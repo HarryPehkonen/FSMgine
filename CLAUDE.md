@@ -41,8 +41,9 @@ hooks both call it, so there is one place to read or change the rules.
 ./tools/ci.sh --list      # show what the stages are
 ```
 
-Stages: `tree format docexamples dbs build lint tests coverage release asan fuzz
-pristine`.
+Stages: `tree format version docexamples dbs build lint tests coverage release asan
+fuzz pristine`. The `version` stage fails if the version declared in `CMakeLists.txt`
+is ever behind the newest `v*` tag.
 
 Two git hooks are checked in but not armed automatically — run `git config
 core.hooksPath .githooks` once per clone. **pre-commit** then runs `--changed dbs
@@ -116,9 +117,19 @@ took the FSMgine corpus from 1124 entries to ~400). `reset()` is the fix.
   earlier views stay valid), `.reset()` (releases the arena — **every earlier view
   becomes dangling**; destroy everything holding a view first), `.arena_size()`.
 
-**`to()` is terminal and returns `void`.** There is no `when()` and no `build()` —
-an earlier design sketched them, but they never landed in the implementation. Each
-transition is its own chain, starting from a fresh `get_builder()`:
+**A `TransitionBuilder` builds exactly one transition, and `to()` spends it.** `to()`
+is the commit point: it moves the accumulated predicates and actions into the machine,
+is terminal, and returns `void` on purpose — a chain continued after it must not
+compile, and a `static_assert` in `tests/test_FSM.cpp` fails the build if that
+signature ever changes. Calling `to()` a second time, or `predicate()`/`action()` after
+`to()`, throws `FSMBuildError` (a `std::logic_error` declared in `FSM.hpp`) rather than
+being silently ignored — on a spent builder the accumulated state is already moved out,
+and a transition with no predicate is deliberately unconditional
+(`Transition::predicatesPass()` treats an empty list as always-true), so letting a
+second `to()` through used to register a silent catch-all. There is no `when()` and no
+`build()` — an earlier design sketched them, but they never landed in the
+implementation. Each transition is its own chain, starting from a fresh
+`get_builder()`:
 
 ```cpp
 #include <FSMgine/FSMgine.hpp>
