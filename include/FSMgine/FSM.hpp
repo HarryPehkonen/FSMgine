@@ -87,6 +87,9 @@ public:
 /// // Process events
 /// machine.process(Event{"start"});  // Transitions to "Working"
 /// @endcode
+// move-only by design: copy is deleted, both moves are defined, and there is no manual resource
+// for a destructor to release.
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 template <typename TEvent = std::monostate> class FSM {
 public:
     /// @brief Type alias for transition predicates
@@ -99,6 +102,9 @@ public:
 
 private:
     // Internal state data structure
+    // move-only by design: every special member is spelled out (= default / = delete); only a
+    // destructor is absent, and it would be trivial.
+    // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
     struct StateData {
         std::vector<Action> on_enter_actions;
         std::vector<Action> on_exit_actions;
@@ -125,9 +131,12 @@ public:
 #ifdef FSMGINE_MULTI_THREADED
         std::unique_lock<std::mutex> lock(other.mutex_);
 #endif
+        // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer) - the lock must be taken before
+        // the members are moved, and a lock cannot be acquired in the member-initialiser list.
         states_ = std::move(other.states_);
         current_state_ = other.current_state_;
         has_initial_state_ = other.has_initial_state_;
+        // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
     }
 
     /// @brief Move assignment operator

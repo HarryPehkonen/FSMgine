@@ -18,9 +18,3 @@ fuzz/fuzz_fsm.cpp:cppcoreguidelines-avoid-c-arrays
 fuzz/fuzz_fsm.cpp:cppcoreguidelines-avoid-non-const-global-variables
 fuzz/fuzz_fsm.cpp:cppcoreguidelines-pro-bounds-constant-array-index
 fuzz/fuzz_fsm.cpp:cppcoreguidelines-pro-bounds-pointer-arithmetic
-include/FSMgine/FSMBuilder.hpp:cppcoreguidelines-avoid-const-or-ref-data-members
-include/FSMgine/FSMBuilder.hpp:cppcoreguidelines-special-member-functions
-include/FSMgine/FSM.hpp:cppcoreguidelines-prefer-member-initializer
-include/FSMgine/FSM.hpp:cppcoreguidelines-special-member-functions
-include/FSMgine/StringInterner.hpp:cppcoreguidelines-special-member-functions
-include/FSMgine/Transition.hpp:cppcoreguidelines-special-member-functions

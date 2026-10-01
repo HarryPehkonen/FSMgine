@@ -33,6 +33,8 @@ namespace fsmgine {
 ///    .action([](const Event& e) { std::cout << "Transitioning!"; })
 ///    .to("StateB");
 /// @endcode
+// short-lived builder: copy is deleted, both moves are defaulted, and nothing is owned.
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 template <typename TEvent> class TransitionBuilder {
 public:
     /// @brief Type alias for transition guard predicates
@@ -73,6 +75,9 @@ public:
     void to(const std::string& state);
 
 private:
+    // the builder BORROWS the machine: it does not own it, and unlike a pointer it cannot be
+    // null.
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
     FSM<TEvent>& fsm_;
     std::string_view from_state_;
     Transition<TEvent> transition_;
@@ -107,6 +112,8 @@ private:
 ///
 /// fsm.setInitialState("Idle");
 /// @endcode
+// short-lived builder: copy is deleted, both moves are defaulted, and nothing is owned.
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 template <typename TEvent> class FSMBuilder {
 public:
     /// @brief Type alias for state actions
@@ -143,6 +150,9 @@ public:
     FSMBuilder& onExit(const std::string& state, Action action);
 
 private:
+    // the builder BORROWS the machine: it does not own it, and unlike a pointer it cannot be
+    // null.
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
     FSM<TEvent>& fsm_;
 };
 

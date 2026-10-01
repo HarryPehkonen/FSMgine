@@ -36,6 +36,8 @@ template <typename TEvent> class TransitionBuilder;
 /// - Actions are executed in the order they were added
 /// - Actions are only executed if all predicates pass
 /// - Actions are executed before the state change occurs
+// move-only by design: copy is deleted, both moves are defaulted, and nothing is owned.
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 template <typename TEvent> class Transition {
 public:
     /// @brief Type alias for transition guard predicates

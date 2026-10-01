@@ -455,6 +455,19 @@ stage_lint() {
     fi
     note "0 new findings across $(printf '%s\n' $tus | wc -l) translation unit(s) \
 ($(grep -vc '^#' "$CI_TIDY_BASELINE" 2>/dev/null || echo 0) inherited key(s) in $CI_TIDY_BASELINE)"
+    # Self-audit the ledger. A key that no longer fires is rot: either the finding was
+    # fixed (prune it) or a NOLINT now suppresses it (which should say so at the site).
+    # Without this, both mechanisms rot in silence — measured: clang-tidy does not warn
+    # about a NOLINT that suppresses nothing.
+    local stale=""
+    if [ -f "$CI_TIDY_BASELINE" ]; then
+        stale=$(comm -13 "$CI_LOG_DIR/tidy-keys.txt" \
+                     <(grep -v '^#' "$CI_TIDY_BASELINE" | sort -u) || true)
+    fi
+    if [ -n "$stale" ]; then
+        note "$(printf '%s\n' "$stale" | wc -l) baseline key(s) no longer fire — prune: tools/ci.sh --write-tidy-baseline lint"
+        printf '%s\n' "$stale" | sed 's/^/    stale: /'
+    fi
 }
 
 stage_tests() {

@@ -37,6 +37,9 @@ namespace fsmgine {
 ///
 /// @warning The clear() method is NOT thread-safe in either variant and should
 /// only be used in single-threaded test scenarios.
+// singleton: the one instance is reached through instance(), copied or moved never; copy is
+// deleted and the = default destructor is what suppresses implicit moves.
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 class StringInterner {
 public:
     /// @brief Gets the singleton instance of StringInterner
