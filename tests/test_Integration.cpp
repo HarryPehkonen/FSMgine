@@ -1,6 +1,7 @@
 #include "FSMgine/FSM.hpp"
 #include "FSMgine/FSMBuilder.hpp"
 #include "FSMgine/StringInterner.hpp"
+#include <cstdint>
 #include <gtest/gtest.h>
 #include <variant>
 
@@ -17,7 +18,7 @@ protected:
 };
 
 // Event type for Turnstile FSM
-enum class TurnstileEvent { COIN, PUSH };
+enum class TurnstileEvent : std::uint8_t { COIN, PUSH };
 
 TEST_F(IntegrationTest, TurnstileStateMachine) {
     FSM<TurnstileEvent> turnstile;

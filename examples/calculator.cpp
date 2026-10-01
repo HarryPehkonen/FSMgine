@@ -1,5 +1,6 @@
 #include <FSMgine/FSMgine.hpp>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <stack>
@@ -7,7 +8,7 @@
 #include <vector>
 
 // Token types
-enum class TokenType { NUMBER, PLUS, MINUS, MULTIPLY, DIVIDE, LPAREN, RPAREN, END };
+enum class TokenType : std::uint8_t { NUMBER, PLUS, MINUS, MULTIPLY, DIVIDE, LPAREN, RPAREN, END };
 
 // Token structure
 struct Token {
@@ -26,11 +27,11 @@ struct Token {
 // Tokenizer FSM
 class Tokenizer {
 public:
-    Tokenizer() : current_number(""), has_decimal(false) {}
+    Tokenizer() : current_number("") {}
 
     // State for building numbers
     std::string current_number;
-    bool has_decimal;
+    bool has_decimal{false};
 
     // Predicates
     bool is_digit(char c) const { return c >= '0' && c <= '9'; }
@@ -67,7 +68,7 @@ public:
     }
 
     Token create_operator(char c) {
-        TokenType type;
+        TokenType type = TokenType::END;
         switch (c) {
         case '+':
             type = TokenType::PLUS;
@@ -144,7 +145,7 @@ public:
             evaluate_top();
         }
         if (!values.empty()) {
-            std::cout << "Result: " << values.top() << std::endl;
+            std::cout << "Result: " << values.top() << '\n';
         }
     }
 
@@ -173,7 +174,7 @@ private:
         TokenType op = operators.top();
         operators.pop();
 
-        double result;
+        double result = 0.0; // every switch arm assigns it; this keeps it defined
         switch (op) {
         case TokenType::PLUS:
             result = a + b;
@@ -323,7 +324,7 @@ int main() {
 
         // First phase: tokenization
         while (tokenizer.getCurrentState() != "END") {
-            char c;
+            char c = 0;
             if (!std::cin.get(c)) {
                 return 0; // Exit on EOF
             }

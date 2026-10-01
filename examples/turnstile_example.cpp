@@ -1,10 +1,11 @@
 #include "FSMgine/FSMgine.hpp"
+#include <cstdint>
 #include <iostream>
 
 using namespace fsmgine;
 
 // Define the events that can drive the turnstile FSM
-enum class TurnstileEvent { COIN_INSERTED, DOOR_PUSHED };
+enum class TurnstileEvent : std::uint8_t { COIN_INSERTED, DOOR_PUSHED };
 
 int main() {
     // Create a turnstile state machine that processes TurnstileEvent

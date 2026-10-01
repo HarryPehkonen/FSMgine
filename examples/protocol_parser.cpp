@@ -23,7 +23,7 @@ public:
 
         for (char c : input) {
             if (!fsm.process(c)) {
-                std::cout << "Error parsing at character: " << c << std::endl;
+                std::cout << "Error parsing at character: " << c << '\n';
                 return false;
             }
         }
@@ -34,7 +34,7 @@ public:
         }
 
         if (fsm.getCurrentState() != "END") {
-            std::cout << "Incomplete message" << std::endl;
+            std::cout << "Incomplete message" << '\n';
             return false;
         }
 
@@ -100,10 +100,10 @@ private:
     }
 
     void printMessage() {
-        std::cout << "Command: " << current_message.command << std::endl;
-        std::cout << "Parameters:" << std::endl;
+        std::cout << "Command: " << current_message.command << '\n';
+        std::cout << "Parameters:" << '\n';
         for (const auto& [key, value] : current_message.params) {
-            std::cout << "  " << key << " = " << value << std::endl;
+            std::cout << "  " << key << " = " << value << '\n';
         }
     }
 };
@@ -114,7 +114,7 @@ class SSPParser {
 public:
     struct SSPMessage {
         std::string status;
-        int code;
+        int code{};
         std::string message;
     };
 
@@ -125,13 +125,13 @@ public:
 
         for (char c : input) {
             if (!fsm.process(c)) {
-                std::cout << "Error parsing at character: " << c << std::endl;
+                std::cout << "Error parsing at character: " << c << '\n';
                 return false;
             }
         }
 
         if (fsm.getCurrentState() != "END") {
-            std::cout << "Incomplete message" << std::endl;
+            std::cout << "Incomplete message" << '\n';
             return false;
         }
 
@@ -191,9 +191,9 @@ private:
     }
 
     void printMessage() {
-        std::cout << "Status: " << current_message.status << std::endl;
-        std::cout << "Code: " << current_message.code << std::endl;
-        std::cout << "Message: " << current_message.message << std::endl;
+        std::cout << "Status: " << current_message.status << '\n';
+        std::cout << "Code: " << current_message.code << '\n';
+        std::cout << "Message: " << current_message.message << '\n';
     }
 };
 
@@ -213,13 +213,13 @@ public:
 
         for (char c : input) {
             if (!fsm.process(c)) {
-                std::cout << "Error parsing at character: " << c << std::endl;
+                std::cout << "Error parsing at character: " << c << '\n';
                 return false;
             }
         }
 
         if (fsm.getCurrentState() != "END") {
-            std::cout << "Incomplete message" << std::endl;
+            std::cout << "Incomplete message" << '\n';
             return false;
         }
 
@@ -289,29 +289,29 @@ private:
     }
 
     void printMessage() {
-        std::cout << "Section: " << current_message.section << std::endl;
-        std::cout << "Configuration:" << std::endl;
+        std::cout << "Section: " << current_message.section << '\n';
+        std::cout << "Configuration:" << '\n';
         for (const auto& [key, value] : current_message.config) {
-            std::cout << "  " << key << " = " << value << std::endl;
+            std::cout << "  " << key << " = " << value << '\n';
         }
     }
 };
 
 int main() {
     // Test Simple Command Protocol
-    std::cout << "Testing Simple Command Protocol (SCP):" << std::endl;
+    std::cout << "Testing Simple Command Protocol (SCP):" << '\n';
     SCPParser scp_parser;
     scp_parser.parse("SET:PARAM1=value1;PARAM2=value2;");
-    std::cout << std::endl;
+    std::cout << '\n';
 
     // Test Simple Status Protocol
-    std::cout << "Testing Simple Status Protocol (SSP):" << std::endl;
+    std::cout << "Testing Simple Status Protocol (SSP):" << '\n';
     SSPParser ssp_parser;
     ssp_parser.parse("SUCCESS[200]:Operation completed successfully\n");
-    std::cout << std::endl;
+    std::cout << '\n';
 
     // Test Simple Configuration Protocol
-    std::cout << "Testing Simple Configuration Protocol (SCFP):" << std::endl;
+    std::cout << "Testing Simple Configuration Protocol (SCFP):" << '\n';
     SCFPParser scfp_parser;
     scfp_parser.parse("DATABASE{host=localhost,port=5432,user=admin}");
 

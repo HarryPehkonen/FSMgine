@@ -55,7 +55,7 @@ constexpr std::size_t kTotalInputs = 30000;
 
 // Growth allowed between the two halves of the run. Bounded-name harnesses sit
 // near zero; an unbounded one grows with the number of distinct names interned.
-constexpr long kMaxGrowthKib = 96 * 1024; // 96 MiB
+constexpr long kMaxGrowthKib = static_cast<const long>(96 * 1024); // 96 MiB
 
 // Resident set size in KiB (second field of statm is resident pages).
 long rss_kib() {
@@ -99,16 +99,16 @@ int main() {
     const long growth = after - before;
     std::cout << "Retention check: " << kTotalInputs << " inputs x " << kInputBytes
               << " bytes; RSS " << before / 1024 << " MiB -> " << after / 1024 << " MiB; growth "
-              << growth / 1024 << " MiB (limit " << kMaxGrowthKib / 1024 << " MiB)" << std::endl;
+              << growth / 1024 << " MiB (limit " << kMaxGrowthKib / 1024 << " MiB)" << '\n';
 
     if (growth > kMaxGrowthKib) {
         std::cout << "FAIL: resident memory grew without bound - the target is not "
                      "releasing the interner's arena between inputs. Call "
                      "StringInterner::reset(); clear() keeps the arena by design."
-                  << std::endl;
+                  << '\n';
         return 1;
     }
 
-    std::cout << "PASS: resident memory stayed bounded" << std::endl;
+    std::cout << "PASS: resident memory stayed bounded" << '\n';
     return 0;
 }

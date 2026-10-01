@@ -18,7 +18,8 @@ public:
     void start() { start_time = high_resolution_clock::now(); }
     double elapsed_ms() {
         auto end_time = high_resolution_clock::now();
-        return duration_cast<nanoseconds>(end_time - start_time).count() / 1000000.0;
+        return static_cast<double>(duration_cast<nanoseconds>(end_time - start_time).count())
+               / 1000000.0;
     }
 };
 

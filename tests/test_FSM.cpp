@@ -279,6 +279,8 @@ TEST_F(FSMTest, ConcurrentStateAccess) {
 
     // Create threads that both read and write concurrently
     // This tests for real race conditions like exceptions or corrupted state
+    threads.reserve(NUM_THREADS);
+
     for (int i = 0; i < NUM_THREADS; ++i) {
         threads.emplace_back([&fsm, &exceptions_caught, &invalid_states, &total_operations]() {
             for (int j = 0; j < ITERATIONS; ++j) {
@@ -312,10 +314,10 @@ TEST_F(FSMTest, ConcurrentStateAccess) {
         thread.join();
     }
 
-    std::cout << "Concurrent access test results:" << std::endl;
-    std::cout << "Total operations: " << total_operations.load() << std::endl;
-    std::cout << "Exceptions caught: " << exceptions_caught.load() << std::endl;
-    std::cout << "Invalid states: " << invalid_states.load() << std::endl;
+    std::cout << "Concurrent access test results:" << '\n';
+    std::cout << "Total operations: " << total_operations.load() << '\n';
+    std::cout << "Exceptions caught: " << exceptions_caught.load() << '\n';
+    std::cout << "Invalid states: " << invalid_states.load() << '\n';
 
     // With proper multithreading support, we should have:
     // - No exceptions (race conditions cause runtime errors)

@@ -24,7 +24,7 @@ private:
 
     void log(const std::string& message) {
         std::lock_guard<std::mutex> lock(cout_mutex);
-        std::cout << "[" << std::this_thread::get_id() << "] " << message << std::endl;
+        std::cout << "[" << std::this_thread::get_id() << "] " << message << '\n';
     }
 
 public:
@@ -109,6 +109,8 @@ int main() {
     ResourcePool pool(NUM_RESOURCES);
     std::vector<std::thread> workers;
 
+    workers.reserve(NUM_WORKERS);
+
     // Start worker threads
     for (int i = 0; i < NUM_WORKERS; ++i) {
         workers.emplace_back(worker, std::ref(pool), i, ITERATIONS_PER_WORKER);
@@ -119,6 +121,6 @@ int main() {
         w.join();
     }
 
-    std::cout << "\nAll workers completed. Final state: " << pool.getCurrentState() << std::endl;
+    std::cout << "\nAll workers completed. Final state: " << pool.getCurrentState() << '\n';
     return 0;
 }

@@ -37,23 +37,23 @@ public:
     // Actions
     void process_open(char c) {
         push(c);
-        std::cout << "Pushed " << c << std::endl;
+        std::cout << "Pushed " << c << '\n';
     }
 
     void process_close(char c) {
         if (matches_top(c)) {
             pop();
-            std::cout << "Matched " << c << std::endl;
+            std::cout << "Matched " << c << '\n';
         } else {
-            std::cout << "Mismatched " << c << std::endl;
+            std::cout << "Mismatched " << c << '\n';
         }
     }
 
     void process_end([[maybe_unused]] char c) {
         if (is_empty()) {
-            std::cout << "Success: All parentheses are balanced!" << std::endl;
+            std::cout << "Success: All parentheses are balanced!" << '\n';
         } else {
-            std::cout << "Error: Unmatched opening parentheses remain" << std::endl;
+            std::cout << "Error: Unmatched opening parentheses remain" << '\n';
         }
     }
 
@@ -94,7 +94,7 @@ int main() {
 
     // read characters from stdin until EOF
     while (fsm.getCurrentState() != "END") {
-        char c;
+        char c = 0;
         if (!std::cin.get(c)) { // Check if read failed (EOF)
             c = EOF;            // Set to EOF if read failed
         }

@@ -23,7 +23,7 @@ void process_digit(char c) { current_word += c; }
 void process_whitespace([[maybe_unused]] char c) {
     if (!current_word.empty()) {
         word_count++;
-        std::cout << "Word " << word_count << ": " << current_word << std::endl;
+        std::cout << "Word " << word_count << ": " << current_word << '\n';
         current_word.clear();
     }
 }
@@ -32,9 +32,9 @@ void process_end([[maybe_unused]] char c) {
     // Process any remaining word
     if (!current_word.empty()) {
         word_count++;
-        std::cout << "Word " << word_count << ": " << current_word << std::endl;
+        std::cout << "Word " << word_count << ": " << current_word << '\n';
     }
-    std::cout << "Total words processed: " << word_count << std::endl;
+    std::cout << "Total words processed: " << word_count << '\n';
 }
 
 int main() {
@@ -63,7 +63,7 @@ int main() {
 
     // read characters from stdin until EOF
     while (fsm.getCurrentState() != "END") {
-        char c;
+        char c = 0;
         if (!std::cin.get(c)) { // Check if read failed (EOF)
             c = EOF;            // Set to EOF if read failed
         }
