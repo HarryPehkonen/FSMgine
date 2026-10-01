@@ -103,6 +103,15 @@ CI_CFG_COMMON=${CI_CFG_COMMON:-"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON $CI_CMAKE_EXT
 CI_CFG_BUILD=${CI_CFG_BUILD:-"-DCMAKE_BUILD_TYPE=${CI_BUILD_TYPE:-Release}"}
 CI_CFG_RELEASE=${CI_CFG_RELEASE:-"-DCMAKE_BUILD_TYPE=$CI_RELEASE_BUILD_TYPE -DCMAKE_CXX_COMPILER=$CI_RELEASE_BUILD_CXX"}
 CI_CFG_FUZZ=${CI_CFG_FUZZ:-"-DFSMGINE_BUILD_FUZZING=ON -DFSMGINE_BUILD_MULTITHREADED=OFF -DBUILD_TESTING=OFF -DCMAKE_CXX_COMPILER=clang++"}
+# Coverage: source-based (clang), gated on MISSED LINES PER FILE over the LIBRARY — the
+# files the suite is supposed to exercise. examples/ and benchmarks/ are compiled but
+# never executed by the tests, so gating them would fail on code that has no tests *by
+# design* — they are in the report, just not in the subject.
+# llvm-cov/llvm-profdata ship with clang on Debian but off PATH; the stage globs for them.
+CI_COV_BUILD_DIR=${CI_COV_BUILD_DIR:-.ci/build-coverage}
+CI_COV_BASELINE=${CI_COV_BASELINE:-.ci/coverage-baseline.txt}
+CI_COV_SUBJECT=${CI_COV_SUBJECT:-"--subject include/FSMgine --subject src"}
+CI_COV_TEST_BIN=${CI_COV_TEST_BIN:-*test*}
 # Paths that are never our source, even when git tracks them: build-asan/ holds 61
 # TRACKED files (committed by accident), including CMake's generated
 # CompilerIdCXX/CMakeCXXCompilerId.cpp — which no formatter can ever satisfy, because
@@ -120,6 +129,7 @@ fi
 
 REQUIRE_CLEAN=0
 WRITE_BASELINE=0
+WRITE_COV_BASELINE=0
 STAGES_REQUESTED=()
 
 # ---------------------------------------------------------------- plumbing
@@ -138,6 +148,10 @@ Stages:
   lint        clang-tidy across the database's translation units
   dbs         configure-only: makes every compile database exist so that `lint` can
               union them AND still name any tracked source no database covers
+  coverage    source-based coverage (clang) over the LIBRARY, gated on MISSED LINES PER
+              FILE: a file may improve, may not regress, and new code must arrive tested.
+              Record the baseline with --write-coverage-baseline. Needs an instrumented
+              build + a test run, so it belongs to the push tier.
   tests       the test suite (ctest), every failure reported
   release     the SAME code in a SECOND configuration: clang++ with -O2, warning-free.
               A different COMPILER on purpose — the default build is gcc, and a
@@ -238,6 +252,65 @@ stage_format() {
         return 1
     fi
     note "no drift across $(printf '%s\n' $files | wc -l) file(s)"
+}
+
+stage_coverage() {
+    stage_banner coverage
+    have clang++ || block "clang++ not installed (source-based coverage needs it)"
+    have python3 || block "python3 not installed (the report parser needs it)"
+    # On Debian these ship with clang but off PATH, hence the glob.
+    local cov profdata
+    cov=$(command -v llvm-cov 2>/dev/null || ls /usr/lib/llvm-*/bin/llvm-cov 2>/dev/null | head -1)
+    profdata=$(command -v llvm-profdata 2>/dev/null || ls /usr/lib/llvm-*/bin/llvm-profdata 2>/dev/null | head -1)
+    [ -n "$cov" ] && [ -n "$profdata" ] || block "llvm-cov/llvm-profdata not found (no coverage tool)"
+    if ! cmake -B "$CI_COV_BUILD_DIR" $CI_CFG_BUILD -DCMAKE_CXX_COMPILER=clang++ \
+               -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping -g -O0" \
+               -DCMAKE_EXE_LINKER_FLAGS="-fprofile-instr-generate" \
+               > "$CI_LOG_DIR/cov-configure.log" 2>&1; then
+        tail -15 "$CI_LOG_DIR/cov-configure.log" | sed 's/^/  /'
+        note "coverage configure failed"
+        return 1
+    fi
+    if ! cmake --build "$CI_COV_BUILD_DIR" -j"$CI_JOBS" > "$CI_LOG_DIR/cov-build.log" 2>&1; then
+        grep -E "error:" "$CI_LOG_DIR/cov-build.log" | head -15 | sed 's/^/  /'
+        note "instrumented build failed"
+        return 1
+    fi
+    local bin prof
+    bin=$(find "$CI_COV_BUILD_DIR" -type f -perm -u+x -name "$CI_COV_TEST_BIN" | head -1)
+    [ -n "$bin" ] || { note "no instrumented test binary matching $CI_COV_TEST_BIN"; return 1; }
+    # ABSOLUTE, not relative: the instrumented binary runs from its own working
+    # directory (ctest sets one), so a relative LLVM_PROFILE_FILE lands somewhere else
+    # and the stage reports "no profile" while the tests clearly ran.
+    prof="$REPO_ROOT/$CI_LOG_DIR/coverage.profraw"
+    rm -f "$prof"
+    if ! LLVM_PROFILE_FILE="$prof" ctest --test-dir "$CI_COV_BUILD_DIR" --output-on-failure -j"$CI_JOBS" \
+         > "$CI_LOG_DIR/cov-test.log" 2>&1; then
+        tail -20 "$CI_LOG_DIR/cov-test.log" | sed 's/^/  /'
+        note "the suite failed under instrumentation (log: $CI_LOG_DIR/cov-test.log)"
+        return 1
+    fi
+    # No profile means the instrumented code never ran. Report that as unknown — never
+    # as 0% coverage (the same rule as "a void is not resistance").
+    [ -s "$prof" ] || { note "no profile was written: instrumented code did not execute"; return 1; }
+    "$profdata" merge -sparse "$prof" -o "$CI_LOG_DIR/coverage.profdata" > /dev/null 2>&1 \
+        || { note "llvm-profdata merge failed"; return 1; }
+    if ! "$cov" report "$bin" -instr-profile="$CI_LOG_DIR/coverage.profdata" \
+         > "$CI_LOG_DIR/coverage-report.txt" 2>&1; then
+        tail -10 "$CI_LOG_DIR/coverage-report.txt" | sed 's/^/  /'
+        note "llvm-cov report failed"
+        return 1
+    fi
+    if [ "$WRITE_COV_BASELINE" = "1" ]; then
+        python3 "$REPO_ROOT/tools/coverage_gate.py" --report "$CI_LOG_DIR/coverage-report.txt" \
+            $CI_COV_SUBJECT --write "$CI_COV_BASELINE" || return 1
+        note "recorded the coverage baseline in $CI_COV_BASELINE"
+    else
+        python3 "$REPO_ROOT/tools/coverage_gate.py" --report "$CI_LOG_DIR/coverage-report.txt" \
+            $CI_COV_SUBJECT --baseline "$CI_COV_BASELINE" || return 1
+        note "no file lost coverage (baseline: $CI_COV_BASELINE)"
+    fi
+    return 0
 }
 
 stage_dbs() {
@@ -503,6 +576,7 @@ run_stage() {
         lint) stage_lint ;;
         tests) stage_tests ;;
         dbs)        stage_dbs ;;
+        coverage)   stage_coverage ;;
         release) stage_release ;;
         asan) stage_asan ;;
         fuzz) stage_fuzz ;;
@@ -519,6 +593,7 @@ while [ $# -gt 0 ]; do
         --require-clean) REQUIRE_CLEAN=1 ;;
         --changed) SCOPE_ALL=0 ;;
         --write-tidy-baseline) WRITE_BASELINE=1 ;;
+        --write-coverage-baseline) WRITE_COV_BASELINE=1 ;;
         --extra-checks) EXTRA_CHECKS=",${2:-}"; shift ;;
         -*) printf 'unknown option: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
         *) STAGES_REQUESTED+=("$1") ;;

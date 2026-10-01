@@ -1,0 +1,10 @@
+# Coverage baseline — gated on MISSED LINES per file (2026-09-30).
+# A file's missed count may go DOWN freely; it may not grow, and a file
+# absent here must arrive fully covered. Re-record with:
+#   tools/ci.sh --write-coverage-baseline coverage
+# path	missed_lines	total_lines	line_cover%
+include/FSMgine/FSM.hpp	7	177	96.05
+include/FSMgine/FSMBuilder.hpp	0	33	100.00
+include/FSMgine/StringInterner.hpp	0	2	100.00
+include/FSMgine/Transition.hpp	0	41	100.00
+src/StringInterner.cpp	0	37	100.00

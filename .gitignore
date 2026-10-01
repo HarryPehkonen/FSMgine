@@ -61,5 +61,6 @@ Thumbs.db
 # (an accepted-debt list that must travel with the repo, not a laptop artifact).
 .ci/*
 !.ci/tidy-baseline.txt
+!.ci/coverage-baseline.txt
 .ci.env
 fuzz/corpus/
