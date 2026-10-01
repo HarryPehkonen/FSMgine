@@ -198,8 +198,10 @@ cmd_publish() {
     [ -f "$notes" ] || { info "no draft yet: generating"; cmd_notes; }
     grep -q 'TODO' "$notes" && die "the compatibility table in $notes is still a placeholder"
     [ "$yes" = "1" ] || die "this publishes publicly: re-run with --yes"
-    # The draft may have been written days ago: date the notes when they are published.
-    sed -i "s/^_Released .* from \`\([0-9a-f]*\)\`\._$/_Released $(date +%F) from \`\1\`._/" "$notes"
+    # The draft may have been written days ago, so stamp it at publish time: BOTH the date and
+    # the commit being released. Re-dating while keeping the old commit told a small public lie
+    # on the v2.0.0 release ("from 1d4b207" — the commit before the release commit).
+    sed -i "s/^_Released .* from \`[0-9a-f]*\`\._$/_Released $(date +%F) from \`$(git rev-parse --short HEAD)\`._/" "$notes"
     info "tagging and publishing…"
     git tag -a "v$v" -m "$PROJECT v$v"
     git push origin "v$v" || die "could not push the tag"
