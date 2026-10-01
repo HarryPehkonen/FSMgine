@@ -14,27 +14,29 @@ int main() {
     auto builder = turnstile.get_builder();
 
     // Define state enter actions. They can optionally use the event that caused the entry.
-    builder.onEnter("LOCKED", [](const TurnstileEvent& triggeringEvent) {
+    builder.onEnter("LOCKED", []([[maybe_unused]] const TurnstileEvent& triggeringEvent) {
         std::cout << "🔒 Turnstile is LOCKED\n";
     });
 
-    builder.onEnter("UNLOCKED", [](const TurnstileEvent& triggeringEvent) {
+    builder.onEnter("UNLOCKED", []([[maybe_unused]] const TurnstileEvent& triggeringEvent) {
         std::cout << "🔓 Turnstile is UNLOCKED\n";
     });
 
-    builder.onEnter("ERROR", [](const TurnstileEvent& triggeringEvent) {
+    builder.onEnter("ERROR", []([[maybe_unused]] const TurnstileEvent& triggeringEvent) {
         std::cout << "🚨 ERROR: Tried to push without coin!\n";
     });
 
     // Define transitions based on events
     builder.from("LOCKED")
         .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::COIN_INSERTED; })
-        .action([](const TurnstileEvent& event) { std::cout << "💰 Coin accepted!\n"; })
+        .action([]([[maybe_unused]] const TurnstileEvent& event) {
+            std::cout << "💰 Coin accepted!\n";
+        })
         .to("UNLOCKED");
 
     builder.from("UNLOCKED")
         .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::DOOR_PUSHED; })
-        .action([](const TurnstileEvent& event) {
+        .action([]([[maybe_unused]] const TurnstileEvent& event) {
             std::cout << "🚪 Door pushed, person passed through\n";
         })
         .to("LOCKED");
@@ -47,7 +49,7 @@ int main() {
     // Recovery from error
     builder.from("ERROR")
         .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::COIN_INSERTED; })
-        .action([](const TurnstileEvent& event) {
+        .action([]([[maybe_unused]] const TurnstileEvent& event) {
             std::cout << "💰 Coin inserted, recovering from error\n";
         })
         .to("UNLOCKED");

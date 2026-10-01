@@ -49,7 +49,7 @@ public:
         // Transition: BUSY -> IDLE (when resources are released)
         fsm.get_builder()
             .from("BUSY")
-            .predicate([this](const ResourceEvent& e) { return !e.is_acquire; })
+            .predicate([](const ResourceEvent& e) { return !e.is_acquire; })
             .action([this](const ResourceEvent&) {
                 available_resources++;
                 log("Resource released. Available: " + std::to_string(available_resources));
@@ -66,7 +66,7 @@ public:
         // Transition: EMPTY -> IDLE (when resources become available)
         fsm.get_builder()
             .from("EMPTY")
-            .predicate([this](const ResourceEvent& e) { return !e.is_acquire; })
+            .predicate([](const ResourceEvent& e) { return !e.is_acquire; })
             .to("IDLE");
 
         fsm.setInitialState("IDLE");
@@ -79,7 +79,7 @@ public:
     std::string_view getCurrentState() const { return fsm.getCurrentState(); }
 };
 
-void worker(ResourcePool& pool, int id, int iterations) {
+void worker(ResourcePool& pool, [[maybe_unused]] int id, int iterations) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> sleep_dist(100, 500);

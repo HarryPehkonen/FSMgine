@@ -130,7 +130,7 @@ public:
 
     void push_lparen(const Token& t) { operators.push(t.type); }
 
-    void handle_rparen(const Token& t) {
+    void handle_rparen([[maybe_unused]] const Token& t) {
         while (!operators.empty() && operators.top() != TokenType::LPAREN) {
             evaluate_top();
         }
@@ -139,7 +139,7 @@ public:
         }
     }
 
-    void finish_parsing(const Token& t) {
+    void finish_parsing([[maybe_unused]] const Token& t) {
         while (!operators.empty()) {
             evaluate_top();
         }
@@ -264,7 +264,7 @@ int main() {
     tokenizer.get_builder()
         .from("START")
         .predicate([&tokenizer_state](char c) { return c == '\n' || tokenizer_state.is_end(c); })
-        .action([&tokenizer_state, &tokens](char c) {
+        .action([&tokenizer_state, &tokens]([[maybe_unused]] char c) {
             if (!tokenizer_state.current_number.empty()) {
                 tokens.push_back(tokenizer_state.finish_number());
             }

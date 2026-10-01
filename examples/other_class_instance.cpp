@@ -21,7 +21,7 @@ public:
 
     void process_digit(char c) { current_word += c; }
 
-    void process_whitespace(char c) {
+    void process_whitespace([[maybe_unused]] char c) {
         if (!current_word.empty()) {
             word_count++;
             std::cout << "Word " << word_count << ": " << current_word << std::endl;
@@ -29,7 +29,7 @@ public:
         }
     }
 
-    void process_end(char c) {
+    void process_end([[maybe_unused]] char c) {
         // Process any remaining word
         if (!current_word.empty()) {
             word_count++;

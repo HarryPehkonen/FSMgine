@@ -88,7 +88,7 @@ private:
 
         builder.from("PARAM_VALUE")
             .predicate([](char c) { return c == ';'; })
-            .action([this](char c) {
+            .action([this]([[maybe_unused]] char c) {
                 current_message.params[current_param] = current_value;
                 current_param.clear();
                 current_value.clear();
@@ -175,7 +175,7 @@ private:
 
         builder.from("CODE")
             .predicate([](char c) { return c == ']'; })
-            .action([this](char c) { current_message.code = std::stoi(code_str); })
+            .action([this]([[maybe_unused]] char c) { current_message.code = std::stoi(code_str); })
             .to("COLON");
 
         // COLON → MESSAGE
@@ -273,7 +273,7 @@ private:
 
         builder.from("VALUE")
             .predicate([](char c) { return c == ','; })
-            .action([this](char c) {
+            .action([this]([[maybe_unused]] char c) {
                 current_message.config[current_key] = current_value;
                 current_key.clear();
                 current_value.clear();
@@ -282,7 +282,9 @@ private:
 
         builder.from("VALUE")
             .predicate([](char c) { return c == '}'; })
-            .action([this](char c) { current_message.config[current_key] = current_value; })
+            .action([this]([[maybe_unused]] char c) {
+                current_message.config[current_key] = current_value;
+            })
             .to("END");
     }
 

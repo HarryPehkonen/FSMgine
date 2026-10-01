@@ -49,7 +49,7 @@ public:
         }
     }
 
-    void process_end(char c) {
+    void process_end([[maybe_unused]] char c) {
         if (is_empty()) {
             std::cout << "Success: All parentheses are balanced!" << std::endl;
         } else {
