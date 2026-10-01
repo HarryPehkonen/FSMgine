@@ -146,8 +146,9 @@ Stages:
   format      clang-format drift — dry run against the repo .clang-format
   build       cmake configure (with a compile database) + build; counts warnings
   lint        clang-tidy across the database's translation units
-  docexamples every C++ example in README.md and include/**.hpp must compile — a
-              documented example is an executable claim, and doc rot is invisible
+  docexamples every C++ example in README.md, CLAUDE.md and include/**.hpp must
+              compile — a documented example is an executable claim, and doc rot is
+              invisible
   dbs         configure-only: makes every compile database exist so that `lint` can
               union them AND still name any tracked source no database covers
   coverage    source-based coverage (clang) over the LIBRARY, gated on MISSED LINES PER
@@ -319,8 +320,8 @@ stage_docexamples() {
     stage_banner docexamples
     have python3 || block "python3 not installed (the doc-example checker needs it)"
     have g++ || block "g++ not installed"
-    # A documented example is an executable claim. Every C++ block in README.md and
-    # include/**.hpp must compile, or an agent (or a reader) copies broken code.
+    # A documented example is an executable claim. Every C++ block in README.md,
+    # CLAUDE.md and include/**.hpp must compile, or an agent copies broken code.
     python3 "$REPO_ROOT/tools/check_doc_examples.py" > "$CI_LOG_DIR/docexamples.log" 2>&1
     local rc=$?
     tail -14 "$CI_LOG_DIR/docexamples.log" | sed 's/^/  /'

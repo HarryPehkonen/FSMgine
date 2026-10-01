@@ -2,8 +2,8 @@
 """check_doc_examples — compile every C++ example in the public docs.
 
 A documented example is an executable claim: if an agent or a reader copies it, it must
-compile. This extracts every C++ block from README.md and include/**.hpp, supplies the
-context the surrounding prose establishes, and compiles it with -fsyntax-only.
+compile. This extracts every C++ block from README.md, CLAUDE.md and include/**.hpp,
+supplies the context the surrounding prose establishes, and compiles it with -fsyntax-only.
 
 WHAT THE WRAPPER SUPPLIES, and what it deliberately does NOT:
 
@@ -24,7 +24,7 @@ import subprocess
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-DOCS = ["README.md"]
+DOCS = ["README.md", "CLAUDE.md"]
 HEADERS = sorted((REPO / "include").rglob("*.hpp"))
 EXCLUDED = {"REQUIREMENTS.md": "historical design doc; API sketches predate the implementation"}
 
