@@ -35,8 +35,9 @@ namespace fsmgine {
 /// - **FSMgine**: No thread synchronization, must be used from a single thread
 /// - **FSMgineMT**: All operations are protected by mutexes for thread-safe access
 ///
-/// @warning The clear() method is NOT thread-safe in either variant and should
-/// only be used in single-threaded test scenarios.
+/// @note Every public operation takes the interner mutex in the FSMgineMT variant,
+///       but the lifetime question is still the caller's: resetArena() invalidates
+///       views other threads may be holding, so call it at a quiet point.
 // singleton: the one instance is reached through instance(), copied or moved never; copy is
 // deleted and the = default destructor is what suppresses implicit moves.
 // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
@@ -56,33 +57,40 @@ public:
     /// @param sv The string_view to intern
     /// @return A string_view that remains valid for the lifetime of the StringInterner
     /// @note The input string_view's data is copied and stored internally
+    /// @note There is no per-name release, by design: the arena is a deque precisely so
+    ///       that inserting a name never invalidates views into earlier ones. Memory is
+    ///       therefore released either not at all, or entirely, by resetArena(). Intern a
+    ///       bounded vocabulary — state names are normally a small fixed set, so the
+    ///       arena stays small — and treat unbounded name generation as the case that
+    ///       needs resetArena() at a quiet point.
     std::string_view intern(std::string_view sv);
-
-    /// @brief Clears the interning index (TEST ONLY - DO NOT USE IN PRODUCTION)
-    /// @warning This method is for testing purposes only and is NOT thread-safe
-    /// @note Previously returned string_views REMAIN VALID after clear(): the
-    /// underlying storage arena is retained until the StringInterner is
-    /// destroyed. clear() only forgets the index, so the same string re-interned
-    /// afterwards yields a new (distinct but equal) string_view.
-    /// @note This method exists solely to reset state between tests
-    void clear();
 
     /// @brief Releases the storage arena, invalidating every previously returned view
     /// @warning Every string_view this interner has ever returned becomes DANGLING.
     ///          Only call this when nothing holds an outstanding view: between
     ///          independent workloads (a fuzzer input, a test case, a batch job).
-    /// @note Unlike clear(), which keeps the arena so that old views stay valid,
-    ///       this actually frees the storage. Re-interning the same text afterwards
-    ///       yields a new view with the same contents.
+    /// @note This is the only operation here that releases memory: re-interning the same
+    ///       text afterwards yields a new view with the same contents.
+    /// @note This is the supported way to release memory, in production as well as in
+    ///       tests: the arena is append-only and holds one copy per distinct name ever
+    ///       interned, so a long-running program that keeps generating new names grows
+    ///       without bound. The safe pattern is a quiet point — destroy every object
+    ///       holding a view (machines first: they hold interned state names), then
+    ///       reset. fuzz/retention_check.cpp measures the difference on one workload:
+    ///       141 MiB of growth without releasing, 1 MiB with resetArena() per input.
+    /// @note Nothing calls this for you. The interner is a process-global singleton
+    ///       whose (defaulted) destructor releases both containers at program exit;
+    ///       between here and there, memory is released all at once or not at all —
+    ///       there is no per-name release (see intern()).
     /// @note Takes the interner mutex in the FSMgineMT variant; callers are still
     ///       responsible for having no live views on other threads.
-    void reset();
+    void resetArena();
 
     /// @brief Number of strings currently retained in the storage arena
-    /// @return The arena size. reset() returns this to 0; clear() leaves it unchanged.
+    /// @return The arena size. resetArena() returns this to 0.
     /// @note For tests and diagnostics: this is the memory the interner holds,
     ///       independently of how many names the lookup index currently covers.
-    std::size_t arena_size() const;
+    std::size_t arenaSize() const;
 
 private:
     /// @brief Interns a copy of sv, returning a view valid for the interner's lifetime

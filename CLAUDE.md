@@ -43,8 +43,13 @@ hooks both call it, so there is one place to read or change the rules.
 ./tools/ci.sh --list      # show what the stages are
 ```
 
-Stages: `tree format version docexamples dbs build lint tests coverage release asan
-fuzz pristine`. The `version` stage fails if the version declared in `CMakeLists.txt`
+Stages: `tree selftest format version docexamples dbs build lint tests coverage release
+asan fuzz pristine`. The `selftest` stage runs `tools/ci_selftest.sh`, which verifies the
+gate's own changed-file scope on a throwaway clone — a regression guard for a bug where a
+commit that deletes a source file used to fail the format stage with "No such file or
+directory" because the scope was listing the deleted path; the script asserts both that
+the fix works and that the pre-fix line still fails, so the guard cannot rot. The `version`
+stage fails if the version declared in `CMakeLists.txt`
 is ever behind the newest `v*` tag, if HEAD is tagged with something other than the
 declared version, or if `tools/release.sh status` does not run; it skips with a note
 in a clone that has no tags.
@@ -52,7 +57,7 @@ in a clone that has no tags.
 Two git hooks are checked in but not armed automatically — run `git config
 core.hooksPath .githooks` once per clone. **pre-commit** then runs `--changed dbs
 format build lint tests` (seconds, scoped to touched files); **pre-push** runs the
-full stage list plus `--require-clean` (~2-3 minutes).
+full, now-fourteen-stage list plus `--require-clean` (~2-3 minutes).
 
 Lint and coverage are baseline-gated, not zero-tolerance, so pre-existing findings
 don't block unrelated work:
@@ -76,16 +81,23 @@ generated from it at configure time (see Project Overview). `tools/release.sh` i
 release process, used in this order:
 
 ```bash
-tools/release.sh status            # what version this repo declares, what is unreleased
-tools/release.sh prepare [--apply] # propose the next version from commits since the last
-                                    # tag; --apply writes it to CMakeLists.txt
-tools/release.sh notes [--open]    # draft the release notes, compatibility table first
-tools/release.sh publish --yes     # tag and publish on GitHub
+tools/release.sh status                       # what version this repo declares, what is
+                                               # unreleased
+tools/release.sh prepare [--apply] [--set X.Y.Z]
+                                               # propose the next version from commits since
+                                               # the last tag; --apply writes it to
+                                               # CMakeLists.txt
+tools/release.sh notes [--open]               # draft the release notes, compatibility
+                                               # table first
+tools/release.sh publish --yes                # tag and publish on GitHub
 ```
 
 A release's notes lead with a compatibility table; filling it in is a human job, and
-`publish` deliberately blocks while it still contains TODO. While this library has no
-consumers, a breaking change is a MINOR bump, not a major one.
+`publish` deliberately blocks while it still contains TODO. `prepare`'s default
+convention: while this library has no consumers, a breaking (`!`) commit is a MINOR bump.
+`--set X.Y.Z` overrides that recommendation to express a deliberate MAJOR — the honest
+version when a public method is removed or renamed, as with the StringInterner changes
+below. The declared version is currently 2.0.0.
 
 ## Coding Standards
 
@@ -112,17 +124,16 @@ cmake --build build-fuzz --target fuzz_fsmgine retention_check
 ```
 
 **Rule: reset the interner between inputs.** `StringInterner` is a process-global
-singleton whose storage arena is append-only by design — `clear()` forgets the
-lookup index but keeps the storage so views handed out earlier stay valid. A
-long-running target that keeps interning fresh names therefore grows resident
+singleton whose storage arena is append-only by design — there is no per-name
+release, so a long-running target that keeps interning fresh names grows resident
 memory without limit: measured at ~250 MiB/min, it ended a run after 12 minutes on
 libFuzzer's own 2 GB guard. So every input must finish with
-`StringInterner::reset()`, which releases the arena and **invalidates every view** —
-and everything holding a view (the machine, the view and name pools) must be
-destroyed **first**. See `fuzz/retention_check.cpp`.
+`StringInterner::resetArena()`, which releases the arena and **invalidates every
+view** — and everything holding a view (the machine, the view and name pools) must
+be destroyed **first**. See `fuzz/retention_check.cpp`.
 
 Do **not** "fix" growth by shrinking the name vocabulary: it costs coverage (it
-took the FSMgine corpus from 1124 entries to ~400). `reset()` is the fix.
+took the FSMgine corpus from 1124 entries to ~400). `resetArena()` is the fix.
 
 ## Current API
 
@@ -136,9 +147,15 @@ took the FSMgine corpus from 1124 entries to ~400). `reset()` is the fix.
   std::string&, Action)`.
 - `fsmgine::TransitionBuilder<TEvent>`: `TransitionBuilder& predicate(Predicate)`,
   `TransitionBuilder& action(Action)`, `void to(const std::string&)`.
-- `fsmgine::StringInterner::instance()`, `.intern(...)`, `.clear()` (keeps the arena —
-  earlier views stay valid), `.reset()` (releases the arena — **every earlier view
-  becomes dangling**; destroy everything holding a view first), `.arena_size()`.
+- `fsmgine::StringInterner::instance()`, `.intern(const std::string&)`,
+  `.intern(std::string_view)`, `.resetArena()` (the only release mechanism —
+  releases the arena and **every earlier view becomes dangling**; destroy
+  everything holding a view first, machines first since they hold interned
+  state-name views), `.arenaSize()`. That is the entire public surface — no
+  `clear()`: it was test-only, it never actually released memory (it only
+  forgot the lookup index, leaving the arena allocated), and it was removed
+  outright in 2.0.0. `reset()`/`arena_size()` were renamed to
+  `resetArena()`/`arenaSize()` in the same release.
 
 **A `TransitionBuilder` builds exactly one transition, and `to()` spends it.** `to()`
 is the commit point: it moves the accumulated predicates and actions into the machine,
@@ -181,11 +198,17 @@ int main() {
 
 ## Known Gaps
 
-- `tests/simple_test_runner.cpp` is dead code: GTest is available in this
-  environment, so `CMakeLists.txt` always takes the GTest branch and no target ever
-  compiles this file.
 - `benchmarks/bench_FSM.cpp` and `bench_StringInterner.cpp` need Google Benchmark,
-  which is not installed here; only `simple_timer_benchmark.cpp` builds without it.
+  which is not installed here; `simple_timer_benchmark.cpp` and
+  `benchmarks/bench_comparison.cpp` (targets `FSMgine_comparison` and `comparison`,
+  pinned to the single-threaded `FSMgine` library) build without it.
+  `bench_comparison.cpp` times FSMgine against a hand-rolled `switch` and a
+  hand-rolled runtime table on the same fixed event script; see README's "When not
+  to use FSMgine" section for what it measures and its stated limits.
+  `tools/update_bench_table.sh` rebuilds `FSMgine_comparison` in Release and
+  rewrites only the text between the `<!-- BENCH-TABLE:BEGIN -->` /
+  `<!-- BENCH-TABLE:END -->` markers in `README.md` — that table is generated, not
+  hand-edited.
 - `REQUIREMENTS.md` is a historical design document carrying its own banner saying
   so — its API sketches (`step()`, `when()`, `build()`, zero-argument predicates)
   predate the current implementation and do not compile against it. It is excluded

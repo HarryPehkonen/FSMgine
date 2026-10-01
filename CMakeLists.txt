@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(FSMgine VERSION 1.4.0 LANGUAGES CXX)
+project(FSMgine VERSION 2.0.0 LANGUAGES CXX)
 
 # Set C++ standard to C++17 for string_view support
 set(CMAKE_CXX_STANDARD 17)

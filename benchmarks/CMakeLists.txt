@@ -49,4 +49,30 @@ add_custom_target(simple_benchmark
     COMMAND FSMgine_simple_benchmark
     DEPENDS FSMgine_simple_benchmark
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-) 
+)
+
+# FSMgine vs. hand-rolled comparison (no external deps). This one is pinned to the
+# single-threaded FSMgine target deliberately: it measures the library's API cost, and a
+# mutex per operation would be a second variable the comparison does not want.
+if(TARGET FSMgine)
+    add_executable(FSMgine_comparison
+        bench_comparison.cpp
+    )
+
+    target_link_libraries(FSMgine_comparison FSMgine)
+
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" FSMGINE_BENCH_BUILD_TYPE_UPPER)
+    target_compile_definitions(FSMgine_comparison PRIVATE
+        FSMGINE_BENCH_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+        FSMGINE_BENCH_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+        FSMGINE_BENCH_CXX_FLAGS="${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${FSMGINE_BENCH_BUILD_TYPE_UPPER}}"
+    )
+
+    add_custom_target(comparison
+        COMMAND FSMgine_comparison
+        DEPENDS FSMgine_comparison
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+else()
+    message(STATUS "FSMgine (single-threaded) target not built - skipping FSMgine_comparison")
+endif()

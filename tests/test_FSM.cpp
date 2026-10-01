@@ -15,7 +15,7 @@ using TestFSM = FSM<>; // Default template argument is std::monostate
 class FSMTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        StringInterner::instance().clear();
+        StringInterner::instance().resetArena();
         action_call_count = 0;
         on_enter_called = false;
         on_exit_called = false;

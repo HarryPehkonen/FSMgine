@@ -30,14 +30,7 @@ std::string_view StringInterner::intern(const std::string& str) { return intern_
 
 std::string_view StringInterner::intern(std::string_view sv) { return intern_impl(sv); }
 
-void StringInterner::clear() {
-    // Testing-only. Forget the index but KEEP the storage arena, so views
-    // handed out before clear() remain valid (see header contract). Re-interning
-    // the same text afterwards yields a new, distinct-but-equal view.
-    interned_strings_.clear();
-}
-
-void StringInterner::reset() {
+void StringInterner::resetArena() {
 #ifdef FSMGINE_MULTI_THREADED
     std::lock_guard<std::mutex> lock(mutex_);
 #endif
@@ -53,7 +46,7 @@ void StringInterner::reset() {
     storage_.swap(empty_arena);
 }
 
-std::size_t StringInterner::arena_size() const {
+std::size_t StringInterner::arenaSize() const {
 #ifdef FSMGINE_MULTI_THREADED
     std::lock_guard<std::mutex> lock(mutex_);
 #endif

@@ -245,24 +245,30 @@ Two consequences are worth knowing before you ship:
   that interns a large number of unique names — a code generator, a batch job, a
   fuzzer — will grow with it.
 
-`StringInterner::reset()` releases the arena and **invalidates every view the
-interner ever handed out**. Call it between independent workloads, when nothing
-holds an outstanding view:
+`StringInterner::resetArena()` releases the arena and **invalidates every view the
+interner ever handed out**. Call it between independent workloads, when nothing holds an
+outstanding view:
 
 ```cpp
 using namespace fsmgine;   // each example stands on its own
 
 auto& interner = StringInterner::instance();
 // ... work with interned names ...
-interner.reset();   // arena released; every previous view is now dangling
+interner.resetArena();   // arena released; every previous view is now dangling
 ```
 
-`StringInterner::arena_size()` reports how many strings the arena currently
-retains, which is useful for diagnostics and tests.
+`StringInterner::arenaSize()` reports how many strings the arena currently retains — useful
+for diagnostics and tests, and for asserting that a workload stayed bounded.
 
-`StringInterner::clear()` is different: it forgets the lookup index but **keeps**
-the storage, so views handed out earlier stay valid. It exists for tests, and it
-is not a way to release memory.
+- **There is no per-name release.** The arena is a deque precisely so that inserting a name
+  never invalidates views into earlier ones, which is also why removing a single name is not
+  possible: memory is released either not at all, or entirely, by `resetArena()`.
+- **Nothing releases it for you.** The interner is a process-global singleton: its destructor
+  releases both containers at program exit, and `resetArena()` is the only way to release them
+  earlier. Intern a bounded vocabulary — state names are normally a small fixed set, so the
+  arena stays small — and treat unbounded name generation as the case that needs
+  `resetArena()` at a quiet point, with machines destroyed first since they hold interned
+  state names.
 
 In a program that builds an FSM and keeps it alive, the arena holds one copy per
 distinct name — hundreds of bytes. The growth above only matters when the set of
@@ -387,7 +393,7 @@ cmake --build build-fuzz --target fuzz_fsmgine retention_check
 ./build-fuzz/retention_check             # asserts resident memory stays bounded
 ```
 
-A fuzz target must call `StringInterner::reset()` between inputs, with everything
+A fuzz target must call `StringInterner::resetArena()` between inputs, with everything
 holding a view destroyed first — see the "Fuzzing" section of `CLAUDE.md` for the
 rule and the reason.
 
@@ -423,7 +429,7 @@ target_link_libraries(your_target PRIVATE FSMgine::FSMgineMT)
 
 State names are interned into an append-only, process-global arena, so a program
 that interns a very large number of *distinct* names grows with it. Call
-`StringInterner::reset()` between independent workloads to release the arena —
+`StringInterner::resetArena()` between independent workloads to release the arena —
 noting that it invalidates outstanding views. See "String Interning and Memory".
 
 ### Thread-related linking errors
@@ -450,6 +456,69 @@ If CMake cannot find FSMgine or FSMgineMT:
    # or
    find_package(FSMgineMT REQUIRED PATHS /path/to/fsmgine/install)
    ```
+
+## When not to use FSMgine
+
+`benchmarks/bench_comparison.cpp` times three implementations of the same five-transition
+machine (Idle/Running/Paused/Done, with a guarded Running→Done transition) under one
+`<chrono>`-based harness: FSMgine itself, a hand-rolled `switch` over an `enum class`
+(the compile-time baseline), and a hand-rolled runtime table — a `std::array` of
+`{state, event, guard, target}` scanned linearly, with small ints instead of strings and
+no `std::function`. All three run the same fixed, deterministic event script; the
+benchmark asserts they produce the identical state sequence before timing anything, so a
+divergence in behavior can't masquerade as a performance number. Construction and event
+processing are timed separately, and every figure is a median over several trials, never
+a best-of. It is a single machine, built and run on one laptop — indicative of where the
+costs come from, not a guarantee of what you'll measure on your hardware.
+
+Two limits worth stating plainly. **"Bytes per machine" is `sizeof()` of the implementation
+object, not its heap footprint** — FSMgine's real memory cost also includes its state-name
+map, the interned-name arena and its `std::function` guards, which a true figure would have to
+count by instrumenting the allocator. And the hand-rolled table's construction cost is
+near-zero because its table is `constexpr static`, shared like a vtable; a table parsed from
+configuration at startup would pay more than the zero shown here.
+
+<!-- BENCH-TABLE:BEGIN -->
+
+Compiler: GNU 14.2.0 · Flags: -O3 -DNDEBUG · CPU: Intel(R) Core(TM) i7-3520M CPU @ 2.90GHz · Date: 2026-10-01
+
+| implementation | ns per event | construction (µs) | bytes per machine | ratio vs switch |
+|---|---|---|---|---|
+| FSMgine | 34.29 | 1.81 | 80 | 12.83 |
+| hand-rolled switch | 2.67 | 0.00 | 1 | 1.00 |
+| hand-rolled table | 3.17 | 0.00 | 1 | 1.19 |
+
+<!-- checksum: 3780000 (accumulated return values; prevents dead-code elimination) -->
+
+<!-- BENCH-TABLE:END -->
+
+Reproduce it with:
+
+```bash
+tools/update_bench_table.sh                             # rebuilds this table in place
+# or, to inspect the binary directly:
+cmake -B build -DBUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target FSMgine_comparison
+./build/benchmarks/FSMgine_comparison             # human-readable report
+./build/benchmarks/FSMgine_comparison --markdown   # the table above
+```
+
+What the numbers suggest:
+
+- **Hand-rolled `switch`** when the machine is fixed at compile time and the hot path
+  matters: a five-transition machine is ten lines and needs no library.
+- **The hand-rolled runtime table** when machines must be defined at run time but strings
+  and `std::function` are too expensive for the hot path — it keeps the dynamic-dispatch
+  shape without either cost.
+- **FSMgine** when the machine *is* data — config, plugins, user input — when
+  string-named states help logging and introspection, when guards and actions should be
+  first-class values instead of hand-written branches, when you want a compile-time
+  choice of thread safety, and when a tested lifetime story matters more than shaving
+  nanoseconds off a transition.
+- The single-threaded `FSMgine` target (not `FSMgineMT`) is the one to link in a hot
+  loop — it compiles out the mutex entirely rather than paying for one per operation.
+
+The table is the actual evidence; read it before taking any of the above as a verdict.
 
 ## Requirements
 

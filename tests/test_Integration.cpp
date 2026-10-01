@@ -10,7 +10,7 @@ using namespace fsmgine;
 class IntegrationTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        StringInterner::instance().clear();
+        StringInterner::instance().resetArena();
         events.clear();
     }
 

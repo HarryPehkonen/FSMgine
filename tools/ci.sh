@@ -86,8 +86,6 @@ CI_LINT_DBS=${CI_LINT_DBS:-"$CI_BUILD_DIR/compile_commands.json $CI_RELEASE_BUIL
 # Tracked sources that NO target compiles, each with the honest reason — named here
 # rather than left silent, and reprinted on every green lint so they can never become
 # invisible:
-#   tests/simple_test_runner.cpp  — dead code: nothing includes it and no CMakeLists
-#                                   mentions it (flagged 2026-09-30, your call)
 #   benchmarks/bench_FSM.cpp,
 #   benchmarks/bench_StringInterner.cpp
 #                                 — gated on Google Benchmark, which is NOT installed.
@@ -95,7 +93,7 @@ CI_LINT_DBS=${CI_LINT_DBS:-"$CI_BUILD_DIR/compile_commands.json $CI_RELEASE_BUIL
 #                                   to simple_timer_benchmark.cpp. NOT installed on
 #                                   purpose: the gate would then depend on an optional
 #                                   dev package, which is a bad deal for a public repo.
-CI_UNBUILT_OK=${CI_UNBUILT_OK:-"tests/simple_test_runner.cpp benchmarks/bench_FSM.cpp benchmarks/bench_StringInterner.cpp"}
+CI_UNBUILT_OK=${CI_UNBUILT_OK:-"benchmarks/bench_FSM.cpp benchmarks/bench_StringInterner.cpp"}
 # ONE definition of each configuration's configure flags, used by BOTH the `dbs` stage
 # (which only configures, to make every compile database exist) and the stage that
 # builds it. Two spellings of the same flags is exactly the drift the gate exists to stop.
@@ -143,6 +141,8 @@ usage() {
 Stages:
   tree        the gate's own footprint is ignored; --require-clean also fails on
               uncommitted changes to tracked files
+  selftest    the gate's own changed-file scope, on a throwaway clone: a commit that
+              deletes a source file must not fail the format stage
   format      clang-format drift — dry run against the repo .clang-format
   version     the declared version must never be behind the newest v* tag
   build       cmake configure (with a compile database) + build; counts warnings
@@ -203,14 +203,35 @@ scoped_sources() {
     if [ "$SCOPE_ALL" = "1" ]; then
         raw=$(eval "git ls-files $CI_SOURCE_GLOBS")
     else
-        raw=$({ git diff --name-only HEAD -- 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+        # --diff-filter=ACMR keeps Added/Copied/Modified/Renamed and drops Deleted. A path this
+        # run deleted is not a file to format or lint, and handing a missing path to
+        # clang-format fails the stage with "No such file or directory" — hit on the v2.0.0
+        # release commit, which deletes a test file. The existence filter below is the belt to
+        # that braces: it also covers a file deleted in the working tree but not yet staged.
+        raw=$({ git diff --name-only --diff-filter=ACMR HEAD -- 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
     fi
     printf '%s\n' "$raw" \
         | grep -E '\.(cpp|cc|cxx|hpp|hh|h)$' \
+        | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done \
         | grep -vE "$CI_SOURCE_EXCLUDE" || true
 }
 
 # ---------------------------------------------------------------- stages
+stage_selftest() {
+    stage_banner selftest
+    # A gate must survive a commit that DELETES a source file. The changed-file scope once handed
+    # clang-format a path this run had removed, so a deletion failed the format stage for the
+    # wrong reason (hit on the v2.0.0 release commit). tools/ci_selftest.sh asserts both
+    # directions — the fix works, and the pre-fix line still fails — so it cannot rot.
+    [ -x "$REPO_ROOT/tools/ci_selftest.sh" ] || block "tools/ci_selftest.sh is missing or not executable"
+    if ! "$REPO_ROOT/tools/ci_selftest.sh" > "$CI_LOG_DIR/selftest.log" 2>&1; then
+        tail -8 "$CI_LOG_DIR/selftest.log" >&2 || true
+        note "the gate's own changed-file scope is broken (log: $CI_LOG_DIR/selftest.log)"
+        return 1
+    fi
+    note "the changed-file scope survives a deleted source file"
+}
+
 stage_tree() {
     stage_banner tree
     local rc=0 p dirty probe
@@ -663,6 +684,7 @@ run_stage() {
     CURRENT_STAGE="$1"
     case "$1" in
         tree) stage_tree ;;
+        selftest) stage_selftest ;;
         format) stage_format ;;
         build) stage_build ;;
         lint) stage_lint ;;

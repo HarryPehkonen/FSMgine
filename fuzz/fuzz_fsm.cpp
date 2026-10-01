@@ -4,7 +4,7 @@
 // stream is interpreted as a sequence of operations: interning names,
 // clearing the interner, building machines/transitions, and stepping them.
 // This exercises the ownership/lifetime paths of the FSM engine and the
-// interner contract (views surviving clear()) under ASan/UBSan.
+// interner contract (views surviving later interning) under ASan/UBSan.
 //
 // Build with clang (libFuzzer):
 //   cmake -B build-fuzz -DFSMGINE_BUILD_FUZZING=ON \
@@ -18,8 +18,8 @@
 //
 // Between inputs the harness is a clean slate: it destroys the machine and both
 // view pools first (the machine holds interned state-name views), then calls
-// StringInterner::reset(). That matters because the interner is a process-global
-// singleton whose arena is append-only by design — clear() only forgets the lookup
+// StringInterner::resetArena(). That matters because the interner is a process-global
+// singleton whose arena is append-only by design: only resetArena() releases it, and
 // index — so a campaign that keeps interning fresh names grows RSS without limit.
 // Measured 2026-09-13: ~250 MiB/min, which ended the run after 12 minutes on
 // libFuzzer's own 2 GB guard. fuzz/retention_check.cpp is the regression test for
@@ -105,14 +105,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     // Each input is an independent workload. Everything that holds an interned
     // view must go before the arena is released: the machine stores state-name
-    // views, and reset() invalidates every view the interner ever handed out.
+    // views, and resetArena() invalidates every view the interner ever handed out.
     fsm_.reset();
     views_.clear();
     names_.clear();
 
     Reader r{data, size};
     auto& interner = StringInterner::instance();
-    interner.reset();
+    interner.resetArena();
 
     while (r.n > 0) {
         const uint8_t op = r.u8() & 0x07;
@@ -130,8 +130,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 views_.push_back(v);
                 break;
             }
-            case 1: // reset the interning index (views must stay valid)
-                interner.clear();
+            case 1: // retired: this opcode used to drop the interner's lookup index, which no
+                    // longer exists — resetArena() is the only thing that releases anything.
+                    // It stays a case so the switch remains exhaustive over 0..7 (see the note
+                    // above), and a deliberate no-op so existing corpus inputs still parse.
                 break;
             case 2: { // (re)build the live machine with a random transition
                 ensure_fsm();

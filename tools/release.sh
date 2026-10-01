@@ -5,7 +5,7 @@
 # because "how a release is made" existed only in someone's head. This script is the process.
 #
 #   tools/release.sh status          what version this repo declares, and what is unreleased
-#   tools/release.sh prepare [--apply]
+#   tools/release.sh prepare [--apply] [--set X.Y.Z]
 #                                    propose the next version from the commits since the last
 #                                    tag; --apply writes it to CMakeLists.txt
 #   tools/release.sh notes [--open]  draft the release notes, compatibility table first
@@ -104,15 +104,31 @@ cmd_status() {
 }
 
 cmd_prepare() {
-    local apply=0 v kind next
-    for arg in "$@"; do [ "$arg" = "--apply" ] && apply=1; done
-    v=$(declared_version); kind=$(recommend_bump); next=$(bump_version "$v" "$kind")
+    local apply=0 v kind next set=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --apply)   apply=1 ;;
+            --set)     shift; set="${1:-}" ;;
+            --set=*)   set="${1#--set=}" ;;
+            *)         die "unknown prepare option: $1" ;;
+        esac
+        shift
+    done
+    v=$(declared_version)
+    if [ -n "$set" ]; then
+        # A deliberate bump: the convention below (breaking -> minor) is a default, not a rule.
+        # A MAJOR is the honest version when a public method is removed or renamed.
+        printf '%s' "$set" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || die "--set wants X.Y.Z, got '$set'"
+        kind="set"; next="$set"
+    else
+        kind=$(recommend_bump); next=$(bump_version "$v" "$kind")
+    fi
     head_ "prepare"
     info "commits since ${tag:-the first commit}:"
     git log --format='  %h %s' "$(range_since_tag)" | head -25
     info ""
     info "recommended: $kind  ->  $next   (declared today: $v)"
-    if [ -n "$(latest_tag)" ] && [ "$v" != "$(latest_tag | sed 's/^v//')" ]; then
+    if [ -z "$set" ] && [ -n "$(latest_tag)" ] && [ "$v" != "$(latest_tag | sed 's/^v//')" ]; then
         info "NOTE: $v is declared but untagged, so a release at $v looks pending. Bumping now"
         info "      skips past it; --apply is only right if you mean to abandon $v."
     fi

@@ -63,7 +63,7 @@ int main() {
     auto time_singleton = benchmark(
         "StringInterner Repeated Singleton",
         [&]() {
-            StringInterner::instance().clear();
+            StringInterner::instance().resetArena();
             for (const auto& state : test_states) {
                 auto interned = StringInterner::instance().intern(state);
                 (void)interned; // Prevent optimization
@@ -75,7 +75,7 @@ int main() {
     auto time_cached = benchmark(
         "StringInterner Cached Reference",
         [&]() {
-            StringInterner::instance().clear();
+            StringInterner::instance().resetArena();
             auto& interner = StringInterner::instance();
             for (const auto& state : test_states) {
                 auto interned = interner.intern(state);

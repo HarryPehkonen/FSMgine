@@ -7,7 +7,7 @@ using namespace fsmgine;
 
 // Benchmark current approach - repeated singleton calls
 static void BM_StringInterner_RepeatedSingleton(benchmark::State& state) {
-    StringInterner::instance().clear();
+    StringInterner::instance().resetArena();
 
     std::vector<std::string> states
         = {"idle",    "processing", "completed", "error",      "retry",
@@ -25,7 +25,7 @@ BENCHMARK(BM_StringInterner_RepeatedSingleton);
 
 // Benchmark optimized approach - cached reference
 static void BM_StringInterner_CachedReference(benchmark::State& state) {
-    StringInterner::instance().clear();
+    StringInterner::instance().resetArena();
 
     std::vector<std::string> states
         = {"idle",    "processing", "completed", "error",      "retry",
