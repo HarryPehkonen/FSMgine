@@ -142,7 +142,11 @@ cmd_notes() {
         printf '## Compatibility\n\n'
         printf '| for code that… | before | now |\n'
         printf '| :--- | :--- | :--- |\n'
-        printf '| TODO: every way existing code could be affected | | |\n\n'
+        printf '| TODO: compiles against the public headers (signatures, headers, macros) | | |\n'
+        printf '| TODO: behaves the same at run time for the same input | | |\n'
+        printf '| TODO: builds and packages (CMake targets, find_package version, options) | | |\n'
+        printf '| TODO: anything removed, renamed, or newly required | | |\n'
+        printf '| TODO: ABI/soname, if anything crosses the library boundary | | |\n\n'
         if [ -n "$(breaking_commits)" ]; then
             printf '## Breaking changes\n\n'
             breaking_commits | sed 's/^[0-9a-f]*	/- /'
@@ -176,7 +180,7 @@ cmd_publish() {
     [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || die "HEAD differs from origin/main: push first"
     have gh || die "gh not installed"
     [ -f "$notes" ] || { info "no draft yet: generating"; cmd_notes; }
-    grep -q '^| TODO' "$notes" && die "the compatibility table in $notes is still a placeholder"
+    grep -q 'TODO' "$notes" && die "the compatibility table in $notes is still a placeholder"
     [ "$yes" = "1" ] || die "this publishes publicly: re-run with --yes"
     # The draft may have been written days ago: date the notes when they are published.
     sed -i "s/^_Released .* from \`\([0-9a-f]*\)\`\._$/_Released $(date +%F) from \`\1\`._/" "$notes"

@@ -67,3 +67,7 @@ Thumbs.db
 # release.sh drafts, until the notes are published on GitHub
 .release/
 fuzz/corpus/
+
+# Python byte-cache from the gate tools (generated: never track it)
+__pycache__/
+*.pyc
