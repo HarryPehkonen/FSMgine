@@ -2,7 +2,9 @@
 #include <iostream>
 #include <string>
 
-// Global state
+// Global state — the point of this example: the same word-counting FSM as
+// other_class_instance.cpp, written without a class. The non-const-global check is
+// accepted for this file; that IS the style being demonstrated.
 int word_count = 0;
 std::string current_word;
 

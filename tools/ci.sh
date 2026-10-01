@@ -422,10 +422,22 @@ stage_lint() {
         mkdir -p "$(dirname "$CI_TIDY_BASELINE")"
         {
             printf '# Inherited clang-tidy findings, accepted when the gate was installed (%s).\n' "$(date +%F)"
+            printf '#\n'
             printf '# Key = path:check. Line numbers are excluded on purpose: they move on every\n'
-            printf '# reformat, and a line-keyed baseline stops matching without saying so.\n'
-            printf '# Fix a finding, then delete its line here. Any key NOT in this file FAILS the\n'
-            printf '# gate, so this list is a debt to pay down, not a permission slip.\n'
+            printf '# reformat, and a line-keyed baseline would stop matching without saying so.\n'
+            printf '#\n'
+            printf '# Any key NOT in this file FAILS the gate, so this is a debt to pay down, not a\n'
+            printf '# permission slip: fix the finding and delete its line, or — when the deviation is\n'
+            printf '# deliberate — suppress it AT THE SITE with a reason. .clang-tidy says which\n'
+            printf '# mechanism to prefer for which shape of finding, and why.\n'
+            printf '#\n'
+            printf '# This file is NOT the whole story: deviations attached to a named entity are\n'
+            printf '# suppressed at the site, where the next reader of the header sees them, so they\n'
+            printf '# never appear here. A key here is also SPENT once a file has one accepted finding\n'
+            printf '# — a second problem of the same kind in that file would be invisible.\n'
+            printf '#\n'
+            printf '# Prune with: tools/ci.sh --write-tidy-baseline lint. The lint stage prints any key\n'
+            printf '# that no longer fires, so rot shows up rather than staying silent.\n'
             cat "$CI_LOG_DIR/tidy-keys.txt"
         } > "$CI_TIDY_BASELINE"
         note "wrote $(grep -vc '^#' "$CI_TIDY_BASELINE") inherited finding key(s) to $CI_TIDY_BASELINE"

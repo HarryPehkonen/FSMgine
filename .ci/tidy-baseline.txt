@@ -1,8 +1,20 @@
 # Inherited clang-tidy findings, accepted when the gate was installed (2026-09-30).
+#
 # Key = path:check. Line numbers are excluded on purpose: they move on every
-# reformat, and a line-keyed baseline stops matching without saying so.
-# Fix a finding, then delete its line here. Any key NOT in this file FAILS the
-# gate, so this list is a debt to pay down, not a permission slip.
+# reformat, and a line-keyed baseline would stop matching without saying so.
+#
+# Any key NOT in this file FAILS the gate, so this is a debt to pay down, not a
+# permission slip: fix the finding and delete its line, or — when the deviation is
+# deliberate — suppress it AT THE SITE with a reason. .clang-tidy says which
+# mechanism to prefer for which shape of finding, and why.
+#
+# This file is NOT the whole story: deviations attached to a named entity are
+# suppressed at the site, where the next reader of the header sees them, so they
+# never appear here. A key here is also SPENT once a file has one accepted finding
+# — a second problem of the same kind in that file would be invisible.
+#
+# Prune with: tools/ci.sh --write-tidy-baseline lint. The lint stage prints any key
+# that no longer fires, so rot shows up rather than staying silent.
 benchmarks/simple_timer_benchmark.cpp:bugprone-exception-escape
 examples/calculator.cpp:bugprone-exception-escape
 examples/no_class_functional.cpp:bugprone-exception-escape
@@ -13,7 +25,6 @@ examples/parentheses_checker.cpp:bugprone-exception-escape
 examples/protocol_parser.cpp:bugprone-exception-escape
 examples/resource_pool_example.cpp:bugprone-exception-escape
 examples/turnstile_example.cpp:bugprone-exception-escape
-fuzz/fuzz_fsm.cpp:bugprone-switch-missing-default-case
 fuzz/fuzz_fsm.cpp:cppcoreguidelines-avoid-c-arrays
 fuzz/fuzz_fsm.cpp:cppcoreguidelines-avoid-non-const-global-variables
 fuzz/fuzz_fsm.cpp:cppcoreguidelines-pro-bounds-constant-array-index

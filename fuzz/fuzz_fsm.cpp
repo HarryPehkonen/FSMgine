@@ -49,6 +49,10 @@ std::vector<std::string> names_;      // raw names (input-derived)
 std::vector<std::string_view> views_; // views handed out by the interner
 std::unique_ptr<FSM<int>> fsm_;
 
+// libFuzzer hands a target (data, size), so this harness reads through a pointer with an
+// explicit remaining-length counter — the shape every fuzz target has, and every read
+// below is bounds-checked by `n`. The Core Guidelines pointer/array checks are therefore
+// accepted for this file (see .ci/tidy-baseline.txt).
 struct Reader {
     const uint8_t* p;
     size_t n;
@@ -113,6 +117,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     while (r.n > 0) {
         const uint8_t op = r.u8() & 0x07;
         try {
+            // op is r.u8() & 0x07, and every value 0..7 has a case below, so there is no
+            // unreachable-value default to add — one would be dead code.
+            // NOLINTNEXTLINE(bugprone-switch-missing-default-case)
             switch (op) {
             case 0: { // intern a fresh name; retain the returned view
                 const std::string name = r.name();

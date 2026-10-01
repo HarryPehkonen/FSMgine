@@ -1,32 +1,25 @@
 # FSMgine clang-tidy configuration — the `lint` stage of tools/ci.sh.
 #
 # Value-plus-Core-Guidelines: the suite's value-only families (bugprone, performance)
-# plus the C++ Core Guidelines checks that CODING_STANDARDS.md already makes mandatory
-# in prose — ownership, no malloc, no C-style casts, no reinterpret_cast, bounds.
+# plus the C++ Core Guidelines checks that CODING_STANDARDS.md already makes mandatory in
+# prose — ownership, no malloc, no C-style casts, no reinterpret_cast, bounds.
 #
-# TWO Core Guidelines families are deliberately EXCLUDED. Measured on this tree
-# 2026-09-30, they are the only ones that fire, and both fire only in test code:
+# TWO Core Guidelines families are deliberately EXCLUDED:
 #
-#   cppcoreguidelines-avoid-magic-numbers                     9 findings
-#       ("10 is a magic number" on a literal in a test; a literal 10 in a loop
-#        bound IS a magic number, but making it a named constant in a test adds
-#        ceremony and no safety. The suite's own jsonTools config warns that the
-#        full families produce ~120 findings "which is how a gate gets ignored".)
-#   cppcoreguidelines-non-private-member-variables-in-classes  6 findings
-#       (test-fixture members that the test needs to reach; the check wants
-#        private + accessors, which for a fixture is backwards.)
+#   cppcoreguidelines-avoid-magic-numbers                      9 findings
+#       ("10 is a magic number" on a literal in a test; a literal 10 in a loop bound IS a
+#        magic number, but naming it in a test adds ceremony and no safety. The suite's
+#        jsonTools config warns the full families produce ~120 findings "which is how a
+#        gate gets ignored".)
+#   cppcoreguidelines-non-private-member-variables-in-classes   6 findings
+#       (test-fixture members the test needs to reach; the check wants private plus
+#        accessors, which for a fixture is backwards.)
 #
-# Everything safety-relevant reports ZERO findings on the current tree, so this
-# config starts green with no baseline file and stays honest — a new safety
-# finding fails the gate, which is the point.
-#
-# Enable either excluded family with: tools/ci.sh lint --extra-checks <name>
+# Every safety-relevant check reports ZERO findings on this tree, so a new safety finding
+# fails the gate — which is the point of wiring it up.
+# Enable either excluded family for one run with: tools/ci.sh lint --extra-checks <name>
 Checks: '-*,bugprone-*,-bugprone-easily-swappable-parameters,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-non-private-member-variables-in-classes,performance-*'
 
-# Which INCLUDED files get reported. Diagnostics in the analysed .cpp are always
-# reported; this only scopes header findings, so it must match FSMgine's own
-# headers and must NOT match a sibling checkout (a gate that fails on code this
-# repo cannot change is a gate you learn to bypass).
 # The fuzz harness catches std::exception ON PURPOSE: FSMgine's contract is that every
 # library error is an exception, so "anything that is not std::exception" is the bug
 # signal. Same shape as jsonTools' AllowEmptyCatchForExceptions for its probe catches.
@@ -34,4 +27,36 @@ CheckOptions:
   - key: bugprone-empty-catch.AllowEmptyCatchForExceptions
     value: 'std::exception'
 
+# Which INCLUDED files get reported. Diagnostics in the analysed .cpp are always
+# reported; this only scopes HEADER findings, so it must match FSMgine's own headers and
+# must NOT match a sibling checkout (a gate that fails on code this repo cannot change is
+# a gate you learn to bypass).
 HeaderFilterRegex: 'include/FSMgine/.*\.hpp$|FSMgine/(src|tests|fuzz|examples|benchmarks)/.*\.cpp$'
+
+# ------------------------------------------------------------------------------------
+# WHERE THE ACCEPTED FINDINGS LIVE — two mechanisms, chosen by the SHAPE of the finding:
+#
+#   1. AT THE SITE, for a deliberate deviation attached to a NAMED entity: a move-only
+#      class, a borrowed reference member, a switch made exhaustive by a mask. Written as
+#
+#          // why we deviate, on the lines ABOVE
+#          // NOLINTNEXTLINE(check-name)
+#
+#      The reason goes above and the directive stays bare on the last line, because
+#      `NOLINTNEXTLINE` must be IMMEDIATELY above the diagnostic and clang-format reflows
+#      a long comment into a continuation line — which broke 5 of the first 6
+#      suppressions here, silently, since clang-tidy does not warn about a NOLINT that
+#      suppresses nothing.
+#      Today: include/FSMgine/{FSM,FSMBuilder,StringInterner,Transition}.hpp
+#
+#   2. IN THE LEDGER, when ONE identical reason repeats across many places — the demo
+#      main()s, the byte-pushing fuzz harness. That is .ci/tidy-baseline.txt.
+#
+# A ledger key is `path:check`, so it is SPENT once a file has one accepted finding: a
+# new class with the same problem in an already-accepted header would be invisible. That
+# is why a specific reason belongs at the site rather than in the ledger.
+#
+# After fixing or suppressing, prune the ledger with: tools/ci.sh --write-tidy-baseline
+# lint. The lint stage prints any key that no longer fires, so a stale entry is visible
+# rather than silent. Background, measurements and pitfalls: the `local-quality-gates`
+# skill, references/fsmgine-gate-wiring.md.
