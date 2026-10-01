@@ -1,6 +1,7 @@
 #include "FSMgine/FSM.hpp"
 #include "FSMgine/FSMBuilder.hpp"
 #include "FSMgine/StringInterner.hpp"
+#include "FSMgine/version.hpp"
 #include <gtest/gtest.h>
 #include <thread>
 #include <type_traits>
@@ -309,6 +310,16 @@ TEST_F(FSMTest, ActionAfterToThrows) {
     tb.to("B");
 
     EXPECT_THROW(tb.action([](const std::monostate&) {}), FSMBuildError);
+}
+
+// The version header is GENERATED from CMakeLists.txt's project() line, so it cannot
+// drift from the version the package exports. This fails loudly if the generation breaks.
+TEST_F(FSMTest, VersionHeaderAgreesWithItsNumbers) {
+    const std::string from_numbers = std::to_string(fsmgine::version_major) + "."
+                                     + std::to_string(fsmgine::version_minor) + "."
+                                     + std::to_string(fsmgine::version_patch);
+    EXPECT_FALSE(fsmgine::version().empty());
+    EXPECT_EQ(from_numbers, std::string(fsmgine::version()));
 }
 
 TEST_F(FSMTest, MoveSemantics) {

@@ -63,4 +63,7 @@ Thumbs.db
 !.ci/tidy-baseline.txt
 !.ci/coverage-baseline.txt
 .ci.env
+
+# release.sh drafts, until the notes are published on GitHub
+.release/
 fuzz/corpus/

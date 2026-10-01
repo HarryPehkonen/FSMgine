@@ -340,6 +340,25 @@ stage_version() {
         note "CMakeLists.txt declares $declared but v$newest is already tagged: bump the declared version"
         return 1
     fi
+    # A tag sitting on HEAD that disagrees with the declared version is exactly the drift
+    # this stage exists for: the tag and the version are written at the same moment.
+    local head_tag
+    head_tag=$(cd "$REPO_ROOT" && git describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null || true)
+    if [ -n "$head_tag" ] && [ "${head_tag#v}" != "$declared" ]; then
+        note "HEAD is tagged $head_tag but CMakeLists.txt declares $declared"
+        return 1
+    fi
+    # The release tooling is part of the process, so it must at least run.
+    [ -x "$REPO_ROOT/tools/release.sh" ] || block "tools/release.sh is missing or not executable"
+    if ! "$REPO_ROOT/tools/release.sh" status > "$CI_LOG_DIR/release-status.log" 2>&1; then
+        note "tools/release.sh status failed (log: $CI_LOG_DIR/release-status.log)"
+        return 1
+    fi
+    grep -q "declared version" "$CI_LOG_DIR/release-status.log" || {
+        note "tools/release.sh status printed no version line"
+        return 1
+    }
+    note "release tooling runs; $(sed -n 's/^  newest tag       : /newest tag /p' "$CI_LOG_DIR/release-status.log" | head -1)"
 }
 
 stage_docexamples() {

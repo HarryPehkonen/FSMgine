@@ -22,6 +22,15 @@ if(FSMGINE_BUILD_MULTITHREADED)
     find_package(Threads REQUIRED)
 endif()
 
+# The version header is GENERATED from the project() version above, so the two cannot
+# drift. Nothing else in the tree holds a version; tools/release.sh prepare --apply is
+# what edits the project() line.
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/FSMgine/version.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/include/FSMgine/version.hpp
+    @ONLY
+)
+
 # Function to create FSMgine library target
 function(create_fsmgine_target TARGET_NAME MULTI_THREADED)
     add_library(${TARGET_NAME}
@@ -38,6 +47,7 @@ function(create_fsmgine_target TARGET_NAME MULTI_THREADED)
     target_include_directories(${TARGET_NAME}
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
             $<INSTALL_INTERFACE:include>
     )
     
@@ -167,6 +177,11 @@ include(CMakePackageConfigHelpers)
 install(DIRECTORY include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.hpp"
+)
+
+# The generated version header is not in the source tree, so install it explicitly.
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/FSMgine/version.hpp
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/FSMgine
 )
 
 # Function to install a library target with its config

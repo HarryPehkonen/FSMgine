@@ -9,7 +9,9 @@ fluent builder API for dynamic FSM construction. It is header-heavy: the public 
 lives in `include/FSMgine/` (`FSM.hpp`, `FSMBuilder.hpp`, `Transition.hpp`,
 `StringInterner.hpp`, and the umbrella `FSMgine.hpp`), with a single translation unit,
 `src/StringInterner.cpp`. Everything lives in namespace `fsmgine`; the umbrella header
-also defines `namespace fsm = fsmgine;` as a convenience alias.
+also defines `namespace fsm = fsmgine;` as a convenience alias. `FSMgine/version.hpp` is
+generated at configure time from `include/FSMgine/version.hpp.in` rather than checked in;
+see Releasing below.
 
 CMake builds two library variants from the same sources, selected by the
 `FSMGINE_MULTI_THREADED` compile definition: **FSMgine** (single-threaded, no
@@ -43,7 +45,9 @@ hooks both call it, so there is one place to read or change the rules.
 
 Stages: `tree format version docexamples dbs build lint tests coverage release asan
 fuzz pristine`. The `version` stage fails if the version declared in `CMakeLists.txt`
-is ever behind the newest `v*` tag.
+is ever behind the newest `v*` tag, if HEAD is tagged with something other than the
+declared version, or if `tools/release.sh status` does not run; it skips with a note
+in a clone that has no tags.
 
 Two git hooks are checked in but not armed automatically — run `git config
 core.hooksPath .githooks` once per clone. **pre-commit** then runs `--changed dbs
@@ -63,6 +67,25 @@ don't block unrelated work:
 Every C++ example in `README.md`, `CLAUDE.md` and the public headers is compiled by the
 `docexamples` stage (`tools/check_doc_examples.py`) — if you add or edit one, the
 gate will try to compile it, so keep it self-contained and correct.
+
+## Releasing
+
+The version has exactly one home: the `project(FSMgine VERSION x.y.z)` line in
+`CMakeLists.txt`. Don't write a version anywhere else — `FSMgine/version.hpp` is
+generated from it at configure time (see Project Overview). `tools/release.sh` is the
+release process, used in this order:
+
+```bash
+tools/release.sh status            # what version this repo declares, what is unreleased
+tools/release.sh prepare [--apply] # propose the next version from commits since the last
+                                    # tag; --apply writes it to CMakeLists.txt
+tools/release.sh notes [--open]    # draft the release notes, compatibility table first
+tools/release.sh publish --yes     # tag and publish on GitHub
+```
+
+A release's notes lead with a compatibility table; filling it in is a human job, and
+`publish` deliberately blocks while it still contains TODO. While this library has no
+consumers, a breaking change is a MINOR bump, not a major one.
 
 ## Coding Standards
 
