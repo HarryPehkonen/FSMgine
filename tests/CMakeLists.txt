@@ -3,6 +3,7 @@ add_executable(FSMgine_tests
     test_Transition.cpp
     test_FSM.cpp
     test_Integration.cpp
+    test_compiled_machine.cpp
 )
 
 target_link_libraries(FSMgine_tests
