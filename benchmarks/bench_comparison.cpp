@@ -1,4 +1,4 @@
-// FSMgine vs. hand-rolled equivalents: three implementations of the SAME small machine,
+// FSMgine vs. hand-rolled equivalents: four implementations of the SAME small machine,
 // timed by the same <chrono>-based harness (no Google Benchmark — not installed, and
 // deliberately not a dependency of this target).
 //
@@ -10,18 +10,22 @@
 //   Done    + Reset  -> Idle
 //   any     + Reset  -> Idle
 //
-// (a) FSMgine       — states/events as strings, built through the fluent builder.
+// (a) FSMgine       — states/events as strings, built through the fluent builder
+//     (the interpreted back end).
 // (b) hand-rolled switch — enum State in a switch statement: the compile-time baseline.
 // (c) hand-rolled table  — std::array<TableEntry> scanned linearly: small ints, no
 //     strings, no std::function. This is the FAIR comparison: it isolates what
 //     FSMgine's API costs over a hand-written DYNAMIC equivalent, rather than comparing
 //     against code the compiler can fully see through.
+// (d) compiled       — fsmgine::compiled::Machine<State, EventData>: the SAME machine on
+//     the compiled back end, same event mix as every other column.
 //
 // Run `./FSMgine_comparison --markdown` for the table tools/update_bench_table.sh pastes
 // into README.md; run it with no arguments for a human-readable report.
 
 #include "FSMgine/FSM.hpp"
 #include "FSMgine/FSMBuilder.hpp"
+#include "FSMgine/compiled/Machine.hpp"
 
 #include <algorithm>
 #include <array>
@@ -204,6 +208,24 @@ bool tableStep(TableMachine& machine, const EventData& event) {
     return false;
 }
 
+// --- (d) compiled: fsmgine::compiled::Machine<State, EventData>, the SAME machine ---
+
+fsmgine::compiled::Machine<State, EventData> buildCompiledMachine() {
+    fsmgine::compiled::Machine<State, EventData> machine{&EventData::kind};
+    machine.from(State::Idle).when(EventKind::Start).to(State::Running);
+    machine.from(State::Running).when(EventKind::Pause).to(State::Paused);
+    machine.from(State::Paused).when(EventKind::Resume).to(State::Running);
+    machine.from(State::Running)
+        .when(EventKind::Finish, fsmgine::compiled::ge(&EventData::progress, 50))
+        .to(State::Done);
+    machine.from(State::Idle).when(EventKind::Reset).to(State::Idle);
+    machine.from(State::Running).when(EventKind::Reset).to(State::Idle);
+    machine.from(State::Paused).when(EventKind::Reset).to(State::Idle);
+    machine.from(State::Done).when(EventKind::Reset).to(State::Idle);
+    machine.setInitialState(State::Idle);
+    return machine;
+}
+
 // --- Deliverable 2: correctness check, run before any timing ---
 
 std::vector<State> runFsmgineScript() {
@@ -239,6 +261,17 @@ std::vector<State> runTableScript() {
     return states;
 }
 
+std::vector<State> runCompiledScript() {
+    auto machine = buildCompiledMachine();
+    std::vector<State> states;
+    states.reserve(kScript.size());
+    for (const auto& event : kScript) {
+        machine.process(event);
+        states.push_back(machine.getCurrentState());
+    }
+    return states;
+}
+
 void printSequence(std::ostream& out, const std::vector<State>& states) {
     for (std::size_t i = 0; i < states.size(); ++i) {
         if (i != 0) {
@@ -253,19 +286,23 @@ bool checkCorrectness() {
     auto fsmgineStates = runFsmgineScript();
     auto switchStates = runSwitchScript();
     auto tableStates = runTableScript();
+    auto compiledStates = runCompiledScript();
 
-    if (fsmgineStates == switchStates && switchStates == tableStates) {
+    if (fsmgineStates == switchStates && switchStates == tableStates
+        && tableStates == compiledStates) {
         return true;
     }
 
-    std::cerr << "FATAL: the three implementations disagree on the state sequence — a "
-                 "comparison between three different behaviours is meaningless.\n";
-    std::cerr << "  FSMgine: ";
+    std::cerr << "FATAL: the four implementations disagree on the state sequence — a "
+                 "comparison between different behaviours is meaningless.\n";
+    std::cerr << "  FSMgine:  ";
     printSequence(std::cerr, fsmgineStates);
-    std::cerr << "  switch:  ";
+    std::cerr << "  switch:   ";
     printSequence(std::cerr, switchStates);
-    std::cerr << "  table:   ";
+    std::cerr << "  table:    ";
     printSequence(std::cerr, tableStates);
+    std::cerr << "  compiled: ";
+    printSequence(std::cerr, compiledStates);
     return false;
 }
 
@@ -469,6 +506,12 @@ int main(int argc, char** argv) {
             []() { return TableMachine{}; },
             [](const TableMachine& m) { return static_cast<std::uint64_t>(m.state); },
             kConstructionItersPerTrial, kConstructionTrials);
+        auto compiledConstruction
+            = benchmarkConstruction([]() { return buildCompiledMachine(); },
+                                    [](const fsmgine::compiled::Machine<State, EventData>& m) {
+                                        return static_cast<std::uint64_t>(m.getCurrentState());
+                                    },
+                                    kConstructionItersPerTrial, kConstructionTrials);
 
         auto fsmgineMachine = buildFsmgineMachine();
         auto fsmgineProcessing = benchmarkProcessing(
@@ -483,6 +526,14 @@ int main(int argc, char** argv) {
         auto tableProcessing = benchmarkProcessing(tableMachine, tableStep,
                                                    kProcessingPassesPerTrial, kProcessingTrials);
 
+        auto compiledMachine = buildCompiledMachine();
+        auto compiledProcessing = benchmarkProcessing(
+            compiledMachine,
+            [](fsmgine::compiled::Machine<State, EventData>& m, const EventData& e) {
+                return m.process(e);
+            },
+            kProcessingPassesPerTrial, kProcessingTrials);
+
         std::vector<BenchRow> rows{
             {"FSMgine", fsmgineProcessing.nsPerEvent, fsmgineConstruction.microsPerBuild,
              sizeof(FSM<EventData>)},
@@ -490,13 +541,17 @@ int main(int argc, char** argv) {
              sizeof(SwitchMachine)},
             {"hand-rolled table", tableProcessing.nsPerEvent, tableConstruction.microsPerBuild,
              sizeof(TableMachine)},
+            {"compiled", compiledProcessing.nsPerEvent, compiledConstruction.microsPerBuild,
+             sizeof(fsmgine::compiled::Machine<State, EventData>)},
         };
 
         if (markdown) {
             printMarkdown(rows, switchProcessing.nsPerEvent);
             std::uint64_t totalChecksum = fsmgineConstruction.checksum + switchConstruction.checksum
-                                          + tableConstruction.checksum + fsmgineProcessing.checksum
-                                          + switchProcessing.checksum + tableProcessing.checksum;
+                                          + tableConstruction.checksum
+                                          + compiledConstruction.checksum
+                                          + fsmgineProcessing.checksum + switchProcessing.checksum
+                                          + tableProcessing.checksum + compiledProcessing.checksum;
             std::cout << "\n<!-- checksum: " << totalChecksum
                       << " (accumulated return values; prevents dead-code elimination) -->\n";
         } else {

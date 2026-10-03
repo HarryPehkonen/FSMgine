@@ -13,6 +13,12 @@ also defines `namespace fsm = fsmgine;` as a convenience alias. `FSMgine/version
 generated at configure time from `include/FSMgine/version.hpp.in` rather than checked in;
 see Releasing below.
 
+A second, additive back end lives in `include/FSMgine/compiled/Machine.hpp`, namespace
+`fsmgine::compiled` — enum states, a transition table of plain data, no interned
+strings or `std::function` on the hot path. The umbrella `FSMgine.hpp` deliberately does
+not include it, so the interpreted back end's users pay nothing for it. See "Current
+API" below and README's "Compiled Back End" section.
+
 CMake builds two library variants from the same sources, selected by the
 `FSMGINE_MULTI_THREADED` compile definition: **FSMgine** (single-threaded, no
 synchronization overhead) and **FSMgineMT** (mutex-protected FSM operations).
@@ -196,15 +202,47 @@ int main() {
 }
 ```
 
+### Compiled Back End
+
+- `fsmgine::compiled::Machine<State, Event>` (`include/FSMgine/compiled/Machine.hpp`,
+  not included by the umbrella header) — `State` is a user `enum`; `Event` must have a
+  public member named `kind` (its type, `decltype(Event::kind)`, is the machine's
+  `EventKind` — a naming convention, not a template parameter, since C++17 cannot
+  deduce a third parameter from the two-argument `Machine<State, Event>`).
+  `Machine& from(State)`, `Machine& when(EventKind)`, `Machine& when(EventKind,
+  Refinement<Event>)`, `Machine& action(Action<Event>)`, `Machine& to(State)` (commits
+  the row being built, like `TransitionBuilder::to()`, but keeps returning `*this` so
+  `from()` can start the next row on the same object), `Machine& withNames(NameFn)`,
+  `setInitialState`/`setCurrentState(State)`, `State getCurrentState() const`,
+  `std::string_view currentStateName() const`, `bool process(const Event&)`. Semantics
+  match `fsmgine::FSM` exactly: first matching transition wins, an action (a plain
+  `void(*)(const Event&)` function pointer — it cannot capture) runs before the state
+  change, and a non-match leaves the state unchanged.
+- `fsmgine::compiled::eq/lt/le/gt/ge(int Event::*, int)` build a `Refinement<Event>` —
+  v1 supports exactly **one** refined field per machine (a second `when(kind,
+  refinement)` naming a different member throws `CompiledMachineError`) and exactly
+  **one** action per transition (a second `.action()` call before `.to()` also throws).
+- `fsmgine::compiled::CompiledMachineError` — a `std::logic_error`, thrown for the two
+  limits above plus calling `process()`/`getCurrentState()` before
+  `setInitialState()`/`setCurrentState()`, or firing a refined row with no refined
+  field on record.
+
+**Interpreted vs. compiled, in one line:** reach for `fsmgine::FSM` when the machine is
+defined at run time (config, plugins, user input) and guards/actions need to close over
+context; reach for `fsmgine::compiled::Machine` when the machine is fixed at compile
+time and you want the table-scan shape without strings or `std::function` on the hot
+path. `benchmarks/bench_comparison.cpp` / README's bench table measure the difference.
+
 ## Known Gaps
 
 - `benchmarks/bench_FSM.cpp` and `bench_StringInterner.cpp` need Google Benchmark,
   which is not installed here; `simple_timer_benchmark.cpp` and
   `benchmarks/bench_comparison.cpp` (targets `FSMgine_comparison` and `comparison`,
   pinned to the single-threaded `FSMgine` library) build without it.
-  `bench_comparison.cpp` times FSMgine against a hand-rolled `switch` and a
-  hand-rolled runtime table on the same fixed event script; see README's "When not
-  to use FSMgine" section for what it measures and its stated limits.
+  `bench_comparison.cpp` times FSMgine against a hand-rolled `switch`, a
+  hand-rolled runtime table, and `fsmgine::compiled::Machine` on the same fixed event
+  script; see README's "When not to use FSMgine" section for what it measures and its
+  stated limits.
   `tools/update_bench_table.sh` rebuilds `FSMgine_comparison` in Release and
   rewrites only the text between the `<!-- BENCH-TABLE:BEGIN -->` /
   `<!-- BENCH-TABLE:END -->` markers in `README.md` — that table is generated, not

@@ -17,6 +17,7 @@
 # that no longer fires, so rot shows up rather than staying silent.
 benchmarks/simple_timer_benchmark.cpp:bugprone-exception-escape
 examples/calculator.cpp:bugprone-exception-escape
+examples/compiled_machine.cpp:bugprone-exception-escape
 examples/no_class_functional.cpp:bugprone-exception-escape
 examples/no_class_functional.cpp:cppcoreguidelines-avoid-non-const-global-variables
 examples/other_class_eventful.cpp:bugprone-exception-escape

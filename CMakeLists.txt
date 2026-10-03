@@ -167,6 +167,8 @@ if(BUILD_EXAMPLES)
     target_link_libraries(protocol_parser ${EXAMPLE_LIBRARY})
     add_executable(resource_pool_example examples/resource_pool_example.cpp)
     target_link_libraries(resource_pool_example ${EXAMPLE_LIBRARY})
+    add_executable(compiled_machine_example examples/compiled_machine.cpp)
+    target_link_libraries(compiled_machine_example ${EXAMPLE_LIBRARY})
 endif()
 
 # Installation rules
@@ -246,7 +248,7 @@ endif()
 foreach(fsm_target FSMgine_tests FSMgine_simple_tests
                   turnstile_example other_class_instance other_class_eventful
                   no_class_functional parentheses_checker calculator
-                  protocol_parser resource_pool_example)
+                  protocol_parser resource_pool_example compiled_machine_example)
     if(TARGET ${fsm_target})
         target_compile_options(${fsm_target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
     endif()

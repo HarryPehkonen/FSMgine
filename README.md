@@ -143,6 +143,33 @@ int main() {
 
 ## Usage Patterns
 
+### Prefer `using fsmgine::FSM;` Over `using namespace fsmgine;`
+
+Library names live in `fsmgine::`, and no header — not even the umbrella
+`FSMgine.hpp` — injects them into the global namespace for you (it only defines the
+`fsm` alias, `namespace fsm = fsmgine;`, as a convenience). That means your own code is
+free to declare its own `struct Transition`, right alongside `fsmgine::Transition` and
+`fsmgine::compiled::Transition` (the compiled back end's transition row) — *until* a
+`using namespace fsmgine;` pulls one of those in and makes `Transition` ambiguous.
+
+Prefer naming only what you use:
+
+```cpp
+using fsmgine::FSM;
+using fsmgine::EventlessFSM;
+```
+
+Two compiler errors are worth recognizing if you do reach for `using namespace
+fsmgine;` anyway:
+
+- **A colliding using-directive**: if your own code also declares a `Transition` (or
+  any other name `fsmgine` exports), the compiler reports "reference to `Transition` is
+  ambiguous", naming both candidates — not which one you meant.
+- **A forgotten template argument**: writing `FSM machine;` instead of `FSM<EventType>
+  machine;` (or using `EventlessFSM`/`FSM<>` for the event-less case) gives "class
+  template argument deduction failed" — the same message `std::pair` produces when its
+  own template arguments are omitted, because it is the same C++17 rule in both cases.
+
 ### Encapsulating the FSM in a Class
 
 For larger applications, it's best practice to encapsulate the FSM and its related state within a class. This provides a clean public API and hides implementation details.
@@ -273,6 +300,88 @@ for diagnostics and tests, and for asserting that a workload stayed bounded.
 In a program that builds an FSM and keeps it alive, the arena holds one copy per
 distinct name — hundreds of bytes. The growth above only matters when the set of
 names is unbounded.
+
+## Compiled Back End
+
+`fsmgine::FSM<TEvent>` (the interpreted back end, everything above this section) is built
+for machines that are **defined at run time**: states are strings, guards are
+`std::function` closures, and actions can capture whatever context they need. That
+flexibility has a cost — see the benchmark table below.
+
+`fsmgine::compiled::Machine<State, Event>` is a second, additive back end for the
+opposite case: **the machine is known when you write the code**. States are a
+user-defined `enum`, a transition is a row of plain data (two enums, a bool, a comparison
+op and an int), and `process()` is a linear scan of that table with no string hashing and
+no `std::function` call on the hot path.
+
+```cpp
+#include <FSMgine/compiled/Machine.hpp>
+#include <cstdint>
+#include <iostream>
+
+enum class State : std::uint8_t { Locked, Unlocked };
+enum class EventKind : std::uint8_t { CoinInserted, DoorPushed };
+struct TurnstileEvent {
+    EventKind kind;
+};
+
+int main() {
+    fsmgine::compiled::Machine<State, TurnstileEvent> turnstile{&TurnstileEvent::kind};
+    turnstile.from(State::Locked).when(EventKind::CoinInserted).to(State::Unlocked);
+    turnstile.from(State::Unlocked).when(EventKind::DoorPushed).to(State::Locked);
+    turnstile.setInitialState(State::Locked);
+
+    turnstile.process(TurnstileEvent{EventKind::CoinInserted}); // -> Unlocked
+    std::cout << (turnstile.getCurrentState() == State::Unlocked) << '\n';
+    return 0;
+}
+```
+
+See `examples/compiled_machine.cpp` for the same machine built on both back ends,
+driven by one shared event script and asserted to agree at every step.
+
+### A separate header
+
+`#include <FSMgine/compiled/Machine.hpp>` — a header the umbrella `FSMgine.hpp`
+**deliberately does not include**, so existing users of the interpreted back end pay
+nothing for a feature they never asked for.
+
+### Four limits, plainly (v1)
+
+- **Actions are plain function pointers, and cannot capture.** `Action<Event>` is
+  `void (*)(const Event&)`, not a `std::function` — context an action needs must come
+  from a file-scope object. An action that writes to a global reintroduces a data race
+  the library cannot protect it from; that is the caller's responsibility, same as any
+  other shared mutable state.
+- **One refined field per machine.** A `Transition` compares at most one `int` member of
+  `Event` (via `eq()`/`lt()`/`le()`/`gt()`/`ge()`), and every refined transition in a
+  given machine must refine the *same* member — a second `when(kind, refinement)` on a
+  different member throws `CompiledMachineError`.
+- **One action per transition.** A second `.action(...)` call on the same transition,
+  before `.to()`, throws `CompiledMachineError` rather than silently replacing the first.
+- **The event needs a member named `kind`.** Its type is read via
+  `decltype(Event::kind)` and becomes the machine's `EventKind` — a naming convention,
+  not a template parameter, because C++17 cannot deduce a third class-template parameter
+  from the two-argument `Machine<State, Event>` the constructor is written against.
+
+Richer per-transition logic — multiple guarded fields, captured state, arbitrary
+predicates — belongs on `fsmgine::FSM<TEvent>` instead.
+
+### Thread safety
+
+A `compiled::Machine` is stateless with respect to any shared data: its transition table
+is `const` after construction and its only mutable state (`currentState_`) is owned by
+the caller. There is no `compiled::MachineMT` variant and no locking, because there is
+nothing shared to lock — unlike `fsmgine::FSM`, which serializes access to
+`StringInterner`'s process-global state. The one race the library cannot protect you
+from is the one you write yourself: an action that writes to a global is your race, not
+the machine's.
+
+### Actions run before the state change
+
+Exactly like the interpreted back end: a firing transition's action runs **before**
+`currentState_` is updated, so an action can still observe the state it is leaving via
+`getCurrentState()` on any machine it can reach.
 
 ## Example Use Cases
 
@@ -459,12 +568,13 @@ If CMake cannot find FSMgine or FSMgineMT:
 
 ## When not to use FSMgine
 
-`benchmarks/bench_comparison.cpp` times three implementations of the same five-transition
+`benchmarks/bench_comparison.cpp` times four implementations of the same five-transition
 machine (Idle/Running/Paused/Done, with a guarded Running→Done transition) under one
-`<chrono>`-based harness: FSMgine itself, a hand-rolled `switch` over an `enum class`
-(the compile-time baseline), and a hand-rolled runtime table — a `std::array` of
-`{state, event, guard, target}` scanned linearly, with small ints instead of strings and
-no `std::function`. All three run the same fixed, deterministic event script; the
+`<chrono>`-based harness: FSMgine itself (the interpreted back end), a hand-rolled
+`switch` over an `enum class` (the compile-time baseline), a hand-rolled runtime table —
+a `std::array` of `{state, event, guard, target}` scanned linearly, with small ints
+instead of strings and no `std::function` — and `fsmgine::compiled::Machine` on the same
+states and events. All four run the same fixed, deterministic event script; the
 benchmark asserts they produce the identical state sequence before timing anything, so a
 divergence in behavior can't masquerade as a performance number. Construction and event
 processing are timed separately, and every figure is a median over several trials, never
@@ -480,15 +590,16 @@ configuration at startup would pay more than the zero shown here.
 
 <!-- BENCH-TABLE:BEGIN -->
 
-Compiler: GNU 14.2.0 · Flags: -O3 -DNDEBUG · CPU: Intel(R) Core(TM) i7-3520M CPU @ 2.90GHz · Date: 2026-10-01
+Compiler: GNU 14.2.0 · Flags: -O3 -DNDEBUG · CPU: Intel(R) Core(TM) i7-3520M CPU @ 2.90GHz · Date: 2026-10-03
 
 | implementation | ns per event | construction (µs) | bytes per machine | ratio vs switch |
 |---|---|---|---|---|
-| FSMgine | 34.29 | 1.81 | 80 | 12.83 |
+| FSMgine | 34.20 | 1.35 | 80 | 12.80 |
 | hand-rolled switch | 2.67 | 0.00 | 1 | 1.00 |
 | hand-rolled table | 3.17 | 0.00 | 1 | 1.19 |
+| compiled | 7.39 | 0.10 | 88 | 2.76 |
 
-<!-- checksum: 3780000 (accumulated return values; prevents dead-code elimination) -->
+<!-- checksum: 5040000 (accumulated return values; prevents dead-code elimination) -->
 
 <!-- BENCH-TABLE:END -->
 
@@ -510,6 +621,9 @@ What the numbers suggest:
 - **The hand-rolled runtime table** when machines must be defined at run time but strings
   and `std::function` are too expensive for the hot path — it keeps the dynamic-dispatch
   shape without either cost.
+- **`fsmgine::compiled::Machine`** (see "Compiled Back End" below) when the machine is
+  known when you write the code and you want that same table shape, with `onEnter`/`onExit`
+  style actions and string state names traded for an enum and a plain function pointer.
 - **FSMgine** when the machine *is* data — config, plugins, user input — when
   string-named states help logging and introspection, when guards and actions should be
   first-class values instead of hand-written branches, when you want a compile-time
