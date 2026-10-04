@@ -165,10 +165,27 @@ fsmgine;` anyway:
 - **A colliding using-directive**: if your own code also declares a `Transition` (or
   any other name `fsmgine` exports), the compiler reports "reference to `Transition` is
   ambiguous", naming both candidates — not which one you meant.
-- **A forgotten template argument**: writing `FSM machine;` instead of `FSM<EventType>
-  machine;` (or using `EventlessFSM`/`FSM<>` for the event-less case) gives "class
-  template argument deduction failed" — the same message `std::pair` produces when its
-  own template arguments are omitted, because it is the same C++17 rule in both cases.
+- **A forgotten template argument is legal, not an error**: `FSM machine;` *compiles*.
+  `TEvent` defaults to `std::monostate`, so class template argument deduction succeeds and
+  you get the event-less machine — `FSM<std::monostate>`, the same type as `EventlessFSM`
+  and `FSM<>`. This is **not** the `std::pair` case: `std::pair p;` fails with "class
+  template argument deduction failed" precisely because `std::pair` has no default template
+  arguments, and `FSM` does. The trap is what you get next: an event-less machine has no
+  `process(const TEvent&)` overload at all, so a forgotten argument surfaces later as a
+  missing overload rather than as a deduction error.
+
+```cpp
+#include <FSMgine/FSMgine.hpp>
+#include <type_traits>
+
+int main() {
+    fsmgine::FSM machine;  // compiles: TEvent defaults to std::monostate
+    static_assert(std::is_same_v<decltype(machine), fsmgine::FSM<std::monostate>>);
+    static_assert(std::is_same_v<decltype(machine), fsmgine::EventlessFSM>);
+    return 0;
+}
+```
+
 
 ### Encapsulating the FSM in a Class
 
@@ -369,13 +386,17 @@ predicates — belongs on `fsmgine::FSM<TEvent>` instead.
 
 ### Thread safety
 
-A `compiled::Machine` is stateless with respect to any shared data: its transition table
-is `const` after construction and its only mutable state (`currentState_`) is owned by
-the caller. There is no `compiled::MachineMT` variant and no locking, because there is
-nothing shared to lock — unlike `fsmgine::FSM`, which serializes access to
-`StringInterner`'s process-global state. The one race the library cannot protect you
-from is the one you write yourself: an action that writes to a global is your race, not
-the machine's.
+A `compiled::Machine` is not synchronized, and there is no `compiled::MachineMT`
+variant. It owns per-instance mutable state — `currentState_` — and `process()`,
+`setInitialState()` and `setCurrentState()` write it, so **one machine must not be driven
+from two threads at once**: a shared instance is a data race, and nothing in the library
+will tell you. Build one machine per thread; they share nothing.
+
+What the compiled back end does remove is `StringInterner`'s process-global state:
+nothing is interned, no string is hashed and no `std::function` is called, so machines on
+different threads never contend with each other — unlike `fsmgine::FSM`, which serializes
+access to that shared interner, with `FSMGINE_MULTI_THREADED` gating the locking. The
+other race stays yours: an action that writes to a global is your race, not the machine's.
 
 ### Actions run before the state change
 
@@ -621,9 +642,11 @@ What the numbers suggest:
 - **The hand-rolled runtime table** when machines must be defined at run time but strings
   and `std::function` are too expensive for the hot path — it keeps the dynamic-dispatch
   shape without either cost.
-- **`fsmgine::compiled::Machine`** (see "Compiled Back End" below) when the machine is
-  known when you write the code and you want that same table shape, with `onEnter`/`onExit`
-  style actions and string state names traded for an enum and a plain function pointer.
+- **`fsmgine::compiled::Machine`** (see "Compiled Back End" above) when the machine is
+  known when you write the code and you want that same table shape: an enum state kept in
+  the table instead of an interned string, and one plain function pointer per transition
+  instead of `onEnter`/`onExit`-style actions. Names remain available for display through
+  `withNames()`, so nothing is lost for logging.
 - **FSMgine** when the machine *is* data — config, plugins, user input — when
   string-named states help logging and introspection, when guards and actions should be
   first-class values instead of hand-written branches, when you want a compile-time

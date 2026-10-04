@@ -47,7 +47,7 @@ namespace {
 
 using fsmgine::FSM;
 
-// --- The event and state vocabulary, shared by all three implementations ---
+// --- The event and state vocabulary, shared by all four implementations ---
 
 enum class EventKind : std::uint8_t { Start, Pause, Resume, Finish, Reset };
 enum class State : std::uint8_t { Idle, Running, Paused, Done };
@@ -61,7 +61,7 @@ constexpr std::array<const char*, 4> kStateNames{"Idle", "Running", "Paused", "D
 
 std::string_view stateName(State state) { return kStateNames.at(static_cast<std::size_t>(state)); }
 
-// The guard, as one explicit predicate reused by all three implementations below —
+// The guard, as one explicit predicate reused by all four implementations below —
 // FSMgine's predicate(), the switch's if-condition, and the table's guard dispatch all
 // call this same function, so "guard: progress >= 50" cannot drift between them.
 bool guardProgressAtLeast50(const EventData& event) { return event.progress >= 50; }
@@ -486,7 +486,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         if (!markdown) {
-            std::cout << "  all three implementations agree on the state sequence\n\n";
+            std::cout << "  all four implementations agree on the state sequence\n\n";
         }
 
         constexpr int kConstructionItersPerTrial = 2000;

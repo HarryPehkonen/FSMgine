@@ -3,7 +3,7 @@
 // fsmgine::compiled::Machine (the compiled back end — an enum state, a transition table
 // of plain data, no std::function on the hot path). Both are driven by one shared event
 // script; the two traces are asserted to agree at every step, then printed side by side
-// with a timing line for each back end's process() loop.
+// with a timing line for the compiled back end's process() loop.
 //
 // See the "Compiled Back End" section of README.md for what the compiled back end is,
 // when to prefer it, and its four v1 limits.
@@ -34,8 +34,9 @@ constexpr std::string_view stateName(State state) {
     return state == State::Locked ? "LOCKED" : "UNLOCKED";
 }
 
-// A fixed, deterministic script: coin, push, push (ignored while already unlocked... but
-// this turnstile relocks on push, so a second coin is needed), coin, push.
+// A fixed, deterministic script of four events: coin, push, coin, push. Every one of
+// them fires (this turnstile relocks on push), so the two traces part company the moment
+// either back end disagrees.
 const std::vector<EventData> kScript{
     {EventKind::CoinInserted}, // Locked -> Unlocked
     {EventKind::DoorPushed},   // Unlocked -> Locked

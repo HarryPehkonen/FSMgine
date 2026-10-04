@@ -131,16 +131,18 @@ template <class Event>
 /// std::function is ever called: a row is plain data (two enums, a bool, an Op and an
 /// int), so the hot path is integer comparisons over a table. The price is v1's one
 /// deliberate limit: AT MOST ONE refined field per machine, set either by the
-/// constructor's `refinedMember` or by the first when(kind, refinement) call. There is
+/// constructor's `refinedMember` or by the first when(kind, refinement) that reaches
+/// to(). A when() the chain abandons commits nothing and reserves nothing. There is
 /// no lambda escape hatch in v1 — richer per-transition logic belongs on
 /// fsmgine::FSM<TEvent> instead.
 ///
 /// @par Thread Safety
-/// Not synchronized, and deliberately so: FSMGINE_MULTI_THREADED gates locking on
-/// fsmgine::FSM because that class serializes access to StringInterner's shared,
-/// process-global state. A compiled::Machine touches no shared state at all — its whole
-/// point is removing the interned-string lookup from the hot path — so there is nothing
-/// to lock and no compiled::MachineMT variant.
+/// Not synchronized, and there is no compiled::MachineMT variant: this class owns
+/// per-instance mutable state (currentState_), and process()/setCurrentState() write it,
+/// so ONE MACHINE MUST NOT BE DRIVEN FROM TWO THREADS at once — a shared instance is a
+/// data race. What the class does remove is StringInterner's process-global state:
+/// nothing is interned, no string is hashed and no std::function is called, so a machine
+/// used by one thread never contends with another machine. Build one per thread.
 ///
 /// @par Example
 /// @code{.cpp}
@@ -186,6 +188,9 @@ public:
     /// @return *this, to continue the chain with when()
     Machine& from(State state) {
         buildFrom_ = state;
+        buildRow_ = Transition<State, Event>{};
+        rowOpen_ = true;
+        hasWhen_ = false;
         return *this;
     }
 
@@ -193,7 +198,10 @@ public:
     /// @param kind The event kind that triggers this transition
     /// @return *this, to continue the chain with to()
     Machine& when(EventKind kind) {
-        buildRow_ = Transition<State, Event>{buildFrom_, kind, false, Op::Eq, 0, buildFrom_};
+        requireOpenTransition("when()");
+        buildRow_ = Transition<State, Event>{buildFrom_, kind,       false,           Op::Eq,
+                                             0,          buildFrom_, buildRow_.action};
+        hasWhen_ = true;
         return *this;
     }
 
@@ -204,14 +212,15 @@ public:
     /// @throws CompiledMachineError if this machine already has a refined transition on a
     /// DIFFERENT field: v1 supports exactly one refined field per machine
     Machine& when(EventKind kind, Refinement<Event> refinement) {
-        if (refinedMember_ == nullptr) {
-            refinedMember_ = refinement.member;
-        } else if (refinedMember_ != refinement.member) {
+        requireOpenTransition("when()");
+        if (refinedMember_ != nullptr && refinedMember_ != refinement.member) {
             throw CompiledMachineError(
                 "compiled::Machine supports exactly one refined field per machine");
         }
-        buildRow_ = Transition<State, Event>{buildFrom_,       kind,      true, refinement.op,
-                                             refinement.value, buildFrom_};
+        pendingRefinedMember_ = refinement.member;
+        buildRow_ = Transition<State, Event>{
+            buildFrom_, kind, true, refinement.op, refinement.value, buildFrom_, buildRow_.action};
+        hasWhen_ = true;
         return *this;
     }
 
@@ -222,6 +231,7 @@ public:
     /// @throws CompiledMachineError if this transition already has an action: v1 supports
     /// exactly one action per transition
     Machine& action(Action<Event> fn) {
+        requireOpenTransition("action()");
         if (buildRow_.action != nullptr) {
             throw CompiledMachineError(
                 "compiled::Machine supports exactly one action per transition");
@@ -233,9 +243,22 @@ public:
     /// @brief Commits the transition being built, to the given target state
     /// @param state The target state of the transition
     /// @return *this, to start the next transition with from()
+    /// @throws CompiledMachineError if no when() has run since from(), or if this row
+    /// introduces a second refined field
     Machine& to(State state) {
+        requireOpenTransition("to()");
+        if (!hasWhen_) {
+            throw CompiledMachineError(
+                "to() called with no transition open: a transition needs when() between "
+                "from() and to()");
+        }
+        if (buildRow_.refined && refinedMember_ == nullptr) {
+            refinedMember_ = pendingRefinedMember_;
+        }
         buildRow_.to = state;
         rows_.push_back(buildRow_);
+        rowOpen_ = false;
+        hasWhen_ = false;
         return *this;
     }
 
@@ -305,6 +328,13 @@ public:
     }
 
 private:
+    void requireOpenTransition(const char* what) const {
+        if (!rowOpen_) {
+            throw CompiledMachineError(std::string(what)
+                                       + " called with no transition open: call from() first");
+        }
+    }
+
     void requireInitialized() const {
         if (!hasInitialState_) {
             throw CompiledMachineError("compiled::Machine has not been initialized with a state");
@@ -342,6 +372,9 @@ private:
 
     State buildFrom_{};
     Transition<State, Event> buildRow_{};
+    int Event::* pendingRefinedMember_ = nullptr;
+    bool rowOpen_ = false;
+    bool hasWhen_ = false;
 };
 
 } // namespace fsmgine::compiled

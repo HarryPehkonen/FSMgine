@@ -361,3 +361,76 @@ TEST(CompiledMachine, ErrorMessageNamesTheProblem) {
         EXPECT_STREQ(e.what(), "compiled::Machine has not been initialized with a state");
     }
 }
+
+// --- Builder-contract regressions, found by an independent review A/B (2026-10-04).
+// Each asserts what the interpreted TransitionBuilder already guarantees: a chain
+// either builds the machine its code reads, or it throws. Written first, RED first.
+
+TEST(CompiledMachineBuilderContract, ActionBeforeWhenIsNotSilentlyDropped) {
+    gCompiledActions.clear();
+    fsmgine::compiled::Machine<State, EventData> m{&EventData::kind};
+    // An action written before when() must still fire: the row is what the chain built.
+    m.from(State::Idle).action(recordCompiledAction).when(EventKind::Start).to(State::Running);
+    m.setInitialState(State::Idle);
+
+    EXPECT_TRUE(m.process(EventData{EventKind::Start, 0}));
+    EXPECT_EQ(m.getCurrentState(), State::Running);
+    ASSERT_EQ(gCompiledActions.size(), 1U);
+    EXPECT_EQ(gCompiledActions.front().kind, EventKind::Start);
+}
+
+TEST(CompiledMachineBuilderContract, ToWithoutWhenIsRejected) {
+    fsmgine::compiled::Machine<State, EventData> m{&EventData::kind};
+    // A commit with no when() would push a stale or default row: a transition that
+    // does not exist. The interpreted builder throws for the analogous misuse.
+    EXPECT_THROW(m.from(State::Idle).to(State::Running), fsmgine::compiled::CompiledMachineError);
+}
+
+TEST(CompiledMachineBuilderContract, ActionAfterCommitIsRejectedForTheRightReason) {
+    fsmgine::compiled::Machine<State, EventData> m{&EventData::kind};
+    m.from(State::Idle).when(EventKind::Start).to(State::Running);
+    // Nothing is open after the commit, so the error must say that - not blame the
+    // finished transition for already having an action.
+    try {
+        m.action(recordCompiledAction);
+        FAIL() << "expected CompiledMachineError with no transition open";
+    } catch (const fsmgine::compiled::CompiledMachineError& e) {
+        EXPECT_NE(std::string_view(e.what()).find("no transition"), std::string_view::npos)
+            << "message was: " << e.what();
+    }
+}
+
+TEST(CompiledMachineBuilderContract, AnAbandonedWhenDoesNotClaimTheRefinedField) {
+    struct TwoFieldEvent {
+        EventKind kind{EventKind::Start};
+        int progress{0};
+        int retries{0};
+    };
+    fsmgine::compiled::Machine<State, TwoFieldEvent> m{&TwoFieldEvent::kind};
+    // This when() never reaches to(), so it commits nothing - and must therefore not
+    // reserve the machine's one refined field for good.
+    m.from(State::Idle)
+        .when(EventKind::Finish, fsmgine::compiled::ge(&TwoFieldEvent::progress, 50));
+    EXPECT_NO_THROW(m.from(State::Running)
+                        .when(EventKind::Finish, fsmgine::compiled::lt(&TwoFieldEvent::retries, 3))
+                        .to(State::Paused));
+}
+
+TEST(CompiledMachineBuilderContract, ProcessMutatesTheInstanceSoOneMachineIsNotShareable) {
+    fsmgine::compiled::Machine<State, EventData> m{&EventData::kind};
+    m.from(State::Idle).when(EventKind::Start).to(State::Running);
+    m.setInitialState(State::Idle);
+    const State before = m.getCurrentState();
+    EXPECT_TRUE(m.process(EventData{EventKind::Start, 0}));
+    // process() writes the machine's own currentState_, so a shared instance driven from
+    // two threads is a data race. This test pins the behaviour the docs must warn about,
+    // the way fsmgine::FSM warns: one instance per thread.
+    EXPECT_NE(before, m.getCurrentState());
+}
+
+TEST(CompiledMachineBuilderContract, WhenWithNoOpenTransitionIsRejected) {
+    fsmgine::compiled::Machine<State, EventData> m{&EventData::kind};
+    // when() with no from() before it has nothing to attach to. Covers the guard the
+    // other three do not reach, so the header's throw paths stay fully exercised.
+    EXPECT_THROW(m.when(EventKind::Start), fsmgine::compiled::CompiledMachineError);
+}
