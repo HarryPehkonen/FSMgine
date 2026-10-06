@@ -1,7 +1,7 @@
 {
   "kit": "AI-DEV-STARTER",
   "url": "https://github.com/HarryPehkonen/AI-DEV-STARTER",
-  "revision": "919006ecf90cfcc7627e008c6bee165754962d93",
+  "revision": "98e517d3655919c44d0a8df936b16c430281acfe",
   "recorded_at": "2026-10-06",
   "record_kind": "retroactive",
   "record_note": "Written 2026-10-06, after the fact: this repo predates the record and was wired by hand from the kit (its gate is adapted rather than copied \u2014 bash, its own stages), so `revision` is not the exact copy point; it is the newest kit commit any recorded file was taken from (d888e29, the hook-tier fix). Kind is `retroactive` for that reason. It carries no `.ci.env.example` (its gate takes no .ci.env) and no gitignore-footprint probe; kit fixes it does not claim are REPORTED by the checker with the result of running the kit's probe against this gate. Rule that keeps this file true: a commit that edits a copied artifact updates its repo_sha256 in the same commit. **2026-10-06, probe re-sync:** the copy of tools/kit-probes/hook-tiers-agree.sh here was the one taken at d888e29. The probe gained two refinements while the fleet was ported -- it reads a full tier single-sourced as CI_DEFAULT_STAGES (four sibling repos spell it that way and have no list in their push hook at all), and it reads the gate's own --list before calling a stage a decoration, because JSOM's `coverage` is declared opt-in. Without them the probe reported those repos as having no tiers. The copy is the kit's current file, revision and adopted_fixes[hook-tiers-agree].from_revision both name 919006e, and every kit_sha256 is re-read at that copy point.",
@@ -11,13 +11,19 @@
       "from_revision": "919006ecf90cfcc7627e008c6bee165754962d93",
       "probe": "probes/hook-tiers-agree.sh",
       "adopted_in": "8850ebb"
+    },
+    {
+      "name": "format-checks-staged",
+      "from_revision": "96719c4",
+      "probe": "probes/format-checks-staged.sh",
+      "adopted_in": "3115c0f"
     }
   ],
   "files": [
     {
       "repo_path": "tools/ci.sh",
       "kit_path": "templates/cpp/ci.sh",
-      "repo_sha256": "35765b4a0f4d13a3fb7d131b620487d89eb74687065e11923c1a8ca3b3793b90",
+      "repo_sha256": "0b75b4d1e61375bfe372715c577c2df70b319bb435b7cca16281ce85cdad6217",
       "adapted": true,
       "adapted_why": "adapted from the kit's template, not a copy: bash, its own stage set (selftest, docexamples, dbs, coverage), `--changed` scoping, and the tier variables added 2026-10-06 (kit d888e29). Diff it, never overwrite it."
     },
@@ -68,6 +74,12 @@
       "repo_sha256": "6e888e4b4517b752540bea18b594a9d4be4f43dde7d7b05d0be953c717582e1f",
       "adapted": true,
       "adapted_why": "not a copy of the template and the direction matters: this contract was written for this repo (commit b5d46e3), and the kit's template came from contracts like it. Listed because it is the agent contract PLUNK-IN step 5 asks for, and recorded so a sync card cannot overwrite it with the template."
+    },
+    {
+      "repo_path": "tools/kit-probes/format-checks-staged.sh",
+      "kit_path": "probes/format-checks-staged.sh",
+      "repo_sha256": "513e9231c31cbc9cb2faa0576fcbc7459f75967b79654825ffc8a648ab29c657",
+      "adapted": false
     }
   ]
 }

@@ -214,7 +214,9 @@ scoped_sources() {
         # clang-format fails the stage with "No such file or directory" — hit on the v2.0.0
         # release commit, which deletes a test file. The existence filter below is the belt to
         # that braces: it also covers a file deleted in the working tree but not yet staged.
-        raw=$({ git diff --name-only --diff-filter=ACMR HEAD -- 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+        # `git diff HEAD` compares the WORKING TREE and skips the index, so a file whose staged copy
+        # differs from its working-tree copy (staged, then formatted on disk) was invisible here.
+        raw=$({ git diff --name-only --diff-filter=ACMR HEAD -- 2>/dev/null; git diff --cached --name-only --diff-filter=ACMR -- 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
     fi
     printf '%s\n' "$raw" \
         | grep -E '\.(cpp|cc|cxx|hpp|hh|h)$' \
@@ -307,6 +309,29 @@ stage_format() {
             printf '%s\n' "$out" | head -4 | sed 's/^/  /'
         fi
     done
+    # The loop above read the WORKING TREE, and a commit records the INDEX. Stage an unformatted file,
+    # then format it on disk -- what anyone does after this stage rejects a commit -- and the loop passes
+    # while the commit still records the unformatted text; HEAD and the working tree then differ, and the
+    # next --require-clean push fails in `tree` with "uncommitted changes to tracked files", a message
+    # that never mentions formatting. Kit fix `format-checks-staged` (docs/KIT-FIXES.md, kit 96719c4).
+    local -a staged=() index_drift=()
+    local staged_f
+    while IFS= read -r staged_f; do
+        [ -n "$staged_f" ] && [ -f "$staged_f" ] && staged+=("$staged_f")
+    done < <(git diff --cached --name-only --diff-filter=ACMR -- 2>/dev/null | grep -E '\.(cpp|cc|cxx|hpp|hh|h)$' || true)
+    if [ "${#staged[@]}" -gt 0 ]; then
+        for staged_f in "${staged[@]}"; do
+            git show ":$staged_f" 2>/dev/null |
+                clang-format --style=file --dry-run --Werror --assume-filename="$staged_f" - > /dev/null 2>&1 ||
+                index_drift+=("$staged_f")
+        done
+        if [ "${#index_drift[@]}" -gt 0 ]; then
+            note "the STAGED copy is not formatted (that is what the commit would record): $(printf '%s ' "${index_drift[@]}")"
+            note "fix with: clang-format -i <file>... && git add <file>..."
+            return 1
+        fi
+    fi
+
     if [ "$bad" != "0" ]; then
         note "$bad file(s) would be reformatted. Fix with: clang-format -i <file>..."
         return 1
