@@ -17,6 +17,9 @@
 #                    is 3-10 s rather than the ~25 s a full lint costs
 #   tests          — last: the most decisive stage, after the cheap ones passed
 #
+# The list itself is tools/ci.sh's CI_FAST_STAGES, and this hook names the tier rather than
+# repeating it: a stage added to the gate reaches the hook without editing this file.
+#
 # Deliberate bypass when you need one:  git commit --no-verify
 #
 set -uo pipefail
@@ -24,7 +27,7 @@ set -uo pipefail
 root=$(git rev-parse --show-toplevel) || exit 1
 
 if [ -x "$root/tools/ci.sh" ]; then
-    exec "$root/tools/ci.sh" --changed dbs format build lint tests
+    exec "$root/tools/ci.sh" --changed fast
 fi
 
 # No gate found is a failure, not a warning: a silently unarmed gate is worse than

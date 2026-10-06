@@ -124,7 +124,7 @@ cmd_prepare() {
         kind=$(recommend_bump); next=$(bump_version "$v" "$kind")
     fi
     head_ "prepare"
-    info "commits since ${tag:-the first commit}:"
+    local t; t=$(latest_tag); info "commits since ${t:-the first commit}:"
     git log --format='  %h %s' "$(range_since_tag)" | head -25
     info ""
     info "recommended: $kind  ->  $next   (declared today: $v)"

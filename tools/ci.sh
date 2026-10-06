@@ -17,10 +17,14 @@
 #   tools/ci.sh --require-clean       # also fail on uncommitted tracked changes
 #   git config core.hooksPath .githooks   # one-time, per clone, enables the hooks
 #
-# Two tiers, because a C++ full run is minutes and a commit cannot afford minutes:
+# Two tiers, because a C++ full run is minutes and a commit cannot afford minutes. Both lists live
+# below as CI_FAST_STAGES and CI_FULL_STAGES, and the hooks NAME a tier rather than repeating it —
+# spelling the stages out in two places is how the comment here came to document eight stages while
+# the pre-push hook ran fourteen:
 #
-#   fast (pre-commit)  --changed format build lint tests
-#   full (pre-push)    --require-clean tree format build lint tests asan fuzz pristine
+#   fast  (pre-commit)  --changed dbs format build lint tests
+#   full  (pre-push)    --require-clean tree selftest format version docexamples kitprobes dbs
+#                       build lint tests coverage release asan fuzz pristine
 #
 # Stage ORDER is not arbitrary:
 #   format before lint/test — it defines the text every later stage judges;
@@ -69,6 +73,8 @@ CI_RELEASE_BUILD_TYPE=${CI_RELEASE_BUILD_TYPE:-Release}
 CI_RELEASE_BUILD_CXX=${CI_RELEASE_BUILD_CXX:-clang++}
 CI_LOG_DIR=${CI_LOG_DIR:-.ci-logs}
 CI_STRICT_TOOLS=${CI_STRICT_TOOLS:-0}          # 1 = a missing tool fails instead of SKIPping
+CI_FAST_STAGES=${CI_FAST_STAGES:-"dbs format build lint tests"}
+CI_FULL_STAGES=${CI_FULL_STAGES:-"tree selftest format version docexamples kitprobes dbs build lint tests coverage release asan fuzz pristine"}
 CI_DEFAULT_STAGES=${CI_DEFAULT_STAGES:-"tree format build lint tests"}
 CI_SOURCE_GLOBS=${CI_SOURCE_GLOBS:-"'*.cpp' '*.cc' '*.cxx' '*.hpp' '*.hh' '*.h'"}
 CI_FUZZ_SECONDS=${CI_FUZZ_SECONDS:-60}         # "quick fuzzing on push" = 60 s
@@ -230,6 +236,35 @@ stage_selftest() {
         return 1
     fi
     note "the changed-file scope survives a deleted source file"
+}
+
+stage_kitprobes() {
+    stage_banner kitprobes
+    # Each probe re-derives one kit fix's guarantee on THIS copy: a gate that has fallen behind a
+    # kit fix says so instead of staying quiet. Added 2026-10-06 with tools/kit-probes/.
+    if [ ! -d "$REPO_ROOT/tools/kit-probes" ]; then
+        note "SKIP: no tools/kit-probes/ — this copy carries no kit probe"
+        return 0
+    fi
+    local probe name failed=0 count=0
+    for probe in "$REPO_ROOT"/tools/kit-probes/*.sh; do
+        [ -f "$probe" ] || continue
+        count=$((count + 1))
+        name="$(basename "$probe")"
+        if bash "$probe" "$REPO_ROOT/tools/ci.sh" "$REPO_ROOT" > "$CI_LOG_DIR/kitprobes-$name.log" 2>&1; then
+            note "ok   $name"
+        else
+            tail -8 "$CI_LOG_DIR/kitprobes-$name.log" >&2 || true
+            note "FAIL $name — this gate is missing that kit fix (log: $CI_LOG_DIR/kitprobes-$name.log)"
+            failed=1
+        fi
+    done
+    if [ "$count" -eq 0 ]; then
+        note "FAIL no probe matched tools/kit-probes/*.sh — a skip that looks like a pass is worse than none"
+        return 1
+    fi
+    [ "$failed" = "1" ] && return 1
+    return 0
 }
 
 stage_tree() {
@@ -697,6 +732,7 @@ run_stage() {
         asan) stage_asan ;;
         fuzz) stage_fuzz ;;
         pristine) stage_pristine ;;
+        kitprobes) stage_kitprobes ;;
         *) printf 'unknown stage: %s\n' "$1" >&2
            block "unknown stage '$1' — refusing to report a pass for a stage that does not exist" ;;
     esac
@@ -706,6 +742,8 @@ run_stage() {
 while [ $# -gt 0 ]; do
     case "$1" in
         --list | --help | -h) usage; exit 0 ;;
+        fast) STAGES_REQUESTED+=($CI_FAST_STAGES) ;;
+        full) STAGES_REQUESTED+=($CI_FULL_STAGES) ;;
         --require-clean) REQUIRE_CLEAN=1 ;;
         --changed) SCOPE_ALL=0 ;;
         --write-tidy-baseline) WRITE_BASELINE=1 ;;
