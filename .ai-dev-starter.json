@@ -1,0 +1,81 @@
+{
+  "kit": "AI-DEV-STARTER",
+  "url": "https://github.com/HarryPehkonen/AI-DEV-STARTER",
+  "revision": "d888e29a558415973abf6e5700450b7ef447afe7",
+  "recorded_at": "2026-10-06",
+  "record_kind": "retroactive",
+  "record_note": "Written 2026-10-06, after the fact: this repo predates the record and was wired by hand from the kit (its gate is adapted rather than copied \u2014 bash, its own stages), so `revision` is not the exact copy point; it is the newest kit commit any recorded file was taken from (d888e29, the hook-tier fix). Kind is `retroactive` for that reason. It carries no `.ci.env.example` (its gate takes no .ci.env) and no gitignore-footprint probe; kit fixes it does not claim are REPORTED by the checker with the result of running the kit's probe against this gate. Rule that keeps this file true: a commit that edits a copied artifact updates its repo_sha256 in the same commit.",
+  "adopted_fixes": [
+    {
+      "name": "hook-tiers-agree",
+      "from_revision": "d888e29a558415973abf6e5700450b7ef447afe7",
+      "probe": "probes/hook-tiers-agree.sh",
+      "adopted_in": "8850ebb"
+    }
+  ],
+  "files": [
+    {
+      "repo_path": "tools/ci.sh",
+      "kit_path": "templates/cpp/ci.sh",
+      "repo_sha256": "0dbfce89ab62f4444b919b281270662e7d1c7b48a36b1b281c286f5fc6afc077",
+      "kit_sha256": "da4c8a4085b06f2e710ca36a8c4818cf417875633706d7ea78014789c6544021",
+      "adapted": true,
+      "adapted_why": "adapted from the kit's template, not a copy: bash, its own stage set (selftest, docexamples, dbs, coverage), `--changed` scoping, and the tier variables added 2026-10-06 (kit d888e29). Diff it, never overwrite it."
+    },
+    {
+      "repo_path": "tools/release.sh",
+      "kit_path": "templates/cpp/release.sh",
+      "repo_sha256": "b79c356ff304c281720bee1873021158cf4d9c9d0b5b7e8b09ebbb7315e8f1f9",
+      "kit_sha256": "481cf0aca0c82a6593f734a548d520ff8668901b21f92b46edc3c9c28a2b6b8c",
+      "adapted": true,
+      "adapted_why": "the kit's script, released-process helper for its own tags; the one-line latest_tag fix in it (2026-10-06) is recorded in this repo's INCIDENTS.md."
+    },
+    {
+      "repo_path": ".githooks/pre-commit",
+      "kit_path": "templates/hooks/pre-commit",
+      "repo_sha256": "715007d702cbd274a99ce445f1a180ef6435bca4d66a629b32481d7954649899",
+      "kit_sha256": "c87ea669b3716917a8de098697107b2afe867fbbdd519d5db68ce077f24e445e",
+      "adapted": true,
+      "adapted_why": "kit script with this repo's measured stage costs in the header; since 2026-10-06 it runs `--changed fast`."
+    },
+    {
+      "repo_path": ".githooks/pre-push",
+      "kit_path": "templates/hooks/pre-push",
+      "repo_sha256": "50cf4296a97ee01c172b17f2a37087fd6bf16c5a9d4104e7b09e23cc93f60d31",
+      "kit_sha256": "ad7380d39fc6c425d2ced5972be828832f704d395fbd17d3676768bfa33dcf10",
+      "adapted": true,
+      "adapted_why": "kit script; since 2026-10-06 it runs `--require-clean full`, which is how the fuzzer and asan stages actually reach a push."
+    },
+    {
+      "repo_path": "INCIDENTS.md",
+      "kit_path": "INCIDENTS.md",
+      "repo_sha256": "1c5295efff249726147b697c83a32d8832bce0d298334920cf6e9ba5a9f23f25",
+      "kit_sha256": "e6e636dbdd3e26c727aff5045c8d50427d79c41011b0c6ace1172e76ca099e0f",
+      "adapted": true,
+      "adapted_why": "this repo's own log, created 2026-10-06."
+    },
+    {
+      "repo_path": ".gitignore",
+      "kit_path": ".gitignore",
+      "repo_sha256": "7726339e849005b3fca738805224dd6cccc5eaf3c79287c66c6a12d2f9027801",
+      "kit_sha256": "47219f5906c1835982a9bea4f0802e9f9b0c97cba48aca3946cbaad18d488fcf",
+      "adapted": true,
+      "adapted_why": "the kit's slash-free gate-footprint recipe (D15) plus this repo's own entries."
+    },
+    {
+      "repo_path": "tools/kit-probes/hook-tiers-agree.sh",
+      "kit_path": "probes/hook-tiers-agree.sh",
+      "repo_sha256": "0977d28832f3b18f08ba0b8a87423c9ab5df19939f93ab0474d8fd88ff2bf29c",
+      "kit_sha256": "0977d28832f3b18f08ba0b8a87423c9ab5df19939f93ab0474d8fd88ff2bf29c",
+      "adapted": false
+    },
+    {
+      "repo_path": "CLAUDE.md",
+      "kit_path": "templates/CLAUDE.md.template",
+      "repo_sha256": "6e888e4b4517b752540bea18b594a9d4be4f43dde7d7b05d0be953c717582e1f",
+      "kit_sha256": "615ad65a51eb5b70a59882d261eeacc1510cbd7c8cd59d730bba945ad19fa3da",
+      "adapted": true,
+      "adapted_why": "not a copy of the template and the direction matters: this contract was written for this repo (commit b5d46e3), and the kit's template came from contracts like it. Listed because it is the agent contract PLUNK-IN step 5 asks for, and recorded so a sync card cannot overwrite it with the template."
+    }
+  ]
+}
