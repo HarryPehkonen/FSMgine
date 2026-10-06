@@ -331,6 +331,11 @@ user-defined `enum`, a transition is a row of plain data (two enums, a bool, a c
 op and an int), and `process()` is a linear scan of that table with no string hashing and
 no `std::function` call on the hot path.
 
+The table is plain data, so it can be written by hand or emitted by a generator.
+[FSMTable](https://github.com/HarryPehkonen/FSMTable) reads a small text format and writes exactly
+this table — including entry and exit actions, composed into the generated functions — with the
+generated machines' tests alongside it.
+
 ```cpp
 #include <FSMgine/compiled/Machine.hpp>
 #include <cstdint>
@@ -392,6 +397,15 @@ variant. It owns per-instance mutable state — `currentState_` — and `process
 from two threads at once**: a shared instance is a data race, and nothing in the library
 will tell you. Build one machine per thread; they share nothing.
 
+The context pattern the actions require has its own version of that rule. Because an action cannot
+capture, the examples reach caller state through a file-scope pointer installed for the duration of
+one event; that pointer is **per-thread global, not per-machine**. Anything else running on the
+thread between the install and the clear can see it, and a machine driven from inside another
+machine's action finds it already replaced. One machine per thread, install → process → clear with
+nothing in between, is the whole contract rather than an accident of the examples. FSMTable's
+`QUESTIONS.md` Q11 records the same reading from the caller's side, where the pointer is installed
+once per line of input.
+
 What the compiled back end does remove is `StringInterner`'s process-global state:
 nothing is interned, no string is hashed and no `std::function` is called, so machines on
 different threads never contend with each other — unlike `fsmgine::FSM`, which serializes
@@ -415,10 +429,12 @@ Demonstrates a thread-safe resource pool.
 ### 2. Protocol Parser
 Shows how to build a state machine for parsing a simple network protocol string.
 - **Pattern:** The FSM transitions character by character through states like `WAITING_HEADER`, `READING_PAYLOAD`, and `VALIDATING`. Actions append characters to buffer strings (`current_command`, `current_param`). This pattern is ideal for stream processing and validation tasks.
+- **Generated from a text format:** [FSMTable](https://github.com/HarryPehkonen/FSMTable) builds a protocol machine of this kind onto the compiled back end — a connection lifecycle with timeouts, retransmission and a sink state — and `fsmtable-gen` turns a text file into the table, with 12 unit tests and a recorded trace in `examples/protocol/`.
 
 ### 3. Calculator Implementation
 Implements a calculator using two FSMs: one for tokenizing the input string and another for parsing and evaluating the expression.
 - **Pattern:** Shows a more advanced, two-stage FSM design. The tokenizer FSM produces a stream of `Token` objects, which are then fed as events into the parser FSM. Actions in the parser manipulate stacks for values and operators, demonstrating how to maintain complex context between states.
+- **Generated from a text format:** this two-stage shape, written as text and generated onto the compiled back end, with its own tests and a recorded session, is [FSMTable](https://github.com/HarryPehkonen/FSMTable)'s `examples/calculator/`.
 
 ### 4. Parentheses Checker
 A simple but effective example that validates balanced parentheses in a string.
