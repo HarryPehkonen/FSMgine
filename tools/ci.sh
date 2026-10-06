@@ -179,7 +179,7 @@ EOF
 }
 
 note()  { printf '  %s\n' "$*"; }
-stage_banner() { printf '\n=== %s ===\n' "$1"; }
+ci_banner() { printf '\n=== %s ===\n' "$1"; }
 record() { RESULT_LINES+=("$(printf '%-9s %s' "$1" "$2")"); }
 
 block() {   # a requested stage that could not run is a failure, not a skip
@@ -224,7 +224,7 @@ scoped_sources() {
 
 # ---------------------------------------------------------------- stages
 stage_selftest() {
-    stage_banner selftest
+    ci_banner selftest
     # A gate must survive a commit that DELETES a source file. The changed-file scope once handed
     # clang-format a path this run had removed, so a deletion failed the format stage for the
     # wrong reason (hit on the v2.0.0 release commit). tools/ci_selftest.sh asserts both
@@ -239,7 +239,7 @@ stage_selftest() {
 }
 
 stage_kitprobes() {
-    stage_banner kitprobes
+    ci_banner kitprobes
     # Each probe re-derives one kit fix's guarantee on THIS copy: a gate that has fallen behind a
     # kit fix says so instead of staying quiet. Added 2026-10-06 with tools/kit-probes/.
     if [ ! -d "$REPO_ROOT/tools/kit-probes" ]; then
@@ -268,7 +268,7 @@ stage_kitprobes() {
 }
 
 stage_tree() {
-    stage_banner tree
+    ci_banner tree
     local rc=0 p dirty probe
     for p in $CI_IGNORED_PATHS; do
         [ -e "$p" ] || continue
@@ -295,7 +295,7 @@ stage_tree() {
 }
 
 stage_format() {
-    stage_banner format
+    ci_banner format
     have clang-format || { [ "$CI_STRICT_TOOLS" = "1" ] && block "clang-format not installed"; note "SKIP: clang-format not installed"; return 0; }
     [ -f .clang-format ] || block "no .clang-format in the repo root — the format stage has no definition"
     local files bad=0 out
@@ -315,7 +315,7 @@ stage_format() {
 }
 
 stage_coverage() {
-    stage_banner coverage
+    ci_banner coverage
     have clang++ || block "clang++ not installed (source-based coverage needs it)"
     have python3 || block "python3 not installed (the report parser needs it)"
     # On Debian these ship with clang but off PATH, hence the glob.
@@ -374,7 +374,7 @@ stage_coverage() {
 }
 
 stage_version() {
-    stage_banner version
+    ci_banner version
     have git || block "git not installed"
     # The declared version must never be BEHIND the newest tag: tags are what a consumer
     # resolves, and this repo once declared 1.0.1 while v1.3.1 was already tagged, which
@@ -418,7 +418,7 @@ stage_version() {
 }
 
 stage_docexamples() {
-    stage_banner docexamples
+    ci_banner docexamples
     have python3 || block "python3 not installed (the doc-example checker needs it)"
     have g++ || block "g++ not installed"
     # A documented example is an executable claim. Every C++ block in README.md,
@@ -434,7 +434,7 @@ stage_docexamples() {
 }
 
 stage_dbs() {
-    stage_banner dbs
+    ci_banner dbs
     have cmake || block "cmake not installed"
     # Configure-only, purely so every compile database EXISTS. The lint stage unions them
     # and fails on a tracked source that no database covers — but a database written by a
@@ -456,7 +456,7 @@ stage_dbs() {
 }
 
 stage_build() {
-    stage_banner build
+    ci_banner build
     have cmake || block "cmake not installed"
     if ! cmake -B "$CI_BUILD_DIR" $CI_CFG_BUILD $CI_CFG_COMMON > "$CI_LOG_DIR/configure.log" 2>&1; then
         tail -25 "$CI_LOG_DIR/configure.log" | sed 's/^/  /'
@@ -480,7 +480,7 @@ stage_build() {
 }
 
 stage_lint() {
-    stage_banner lint
+    ci_banner lint
     have clang-tidy || { [ "$CI_STRICT_TOOLS" = "1" ] && block "clang-tidy not installed"; note "SKIP: clang-tidy not installed"; return 0; }
     have python3 || block "python3 not installed (needed to read the compile database)"
     [ -f .clang-tidy ] || block "no .clang-tidy in the repo root — the lint stage has no definition"
@@ -606,7 +606,7 @@ stage_lint() {
 }
 
 stage_tests() {
-    stage_banner tests
+    ci_banner tests
     have ctest || block "ctest not installed"
     if ! $CI_TEST_CMD; then
         note "tests failed (above)"
@@ -616,7 +616,7 @@ stage_tests() {
 }
 
 stage_asan() {
-    stage_banner asan
+    ci_banner asan
     have clang++ || block "clang++ not installed (sanitizers need it here)"
     if ! cmake -B "$CI_ASAN_BUILD_DIR" -DCMAKE_BUILD_TYPE=Debug \
                -DCMAKE_CXX_COMPILER=clang++ \
@@ -637,7 +637,7 @@ stage_asan() {
 }
 
 stage_fuzz() {
-    stage_banner fuzz
+    ci_banner fuzz
     have clang++ || block "clang++ not installed (libFuzzer needs clang)"
     if ! cmake -B "$CI_FUZZ_BUILD_DIR" $CI_CFG_FUZZ $CI_CFG_COMMON \
                > "$CI_LOG_DIR/fuzz-configure.log" 2>&1; then
@@ -668,7 +668,7 @@ stage_fuzz() {
 }
 
 stage_pristine() {
-    stage_banner pristine
+    ci_banner pristine
     local tmp rc
     tmp=$(mktemp -d)
     if ! git archive HEAD | tar -x -C "$tmp"; then note "could not export HEAD"; rm -rf "$tmp"; return 1; fi
@@ -689,7 +689,7 @@ stage_pristine() {
 }
 
 stage_release() {
-    stage_banner release
+    ci_banner release
     have cmake || block "cmake not installed"
     have "$CI_RELEASE_BUILD_CXX" || block "$CI_RELEASE_BUILD_CXX not installed"
     if ! cmake -B "$CI_RELEASE_BUILD_DIR" $CI_CFG_RELEASE $CI_CFG_COMMON \
@@ -741,7 +741,18 @@ run_stage() {
 # ---------------------------------------------------------------- main
 while [ $# -gt 0 ]; do
     case "$1" in
-        --list | --help | -h) usage; exit 0 ;;
+        # --list answers the question a TOOL asks: which stages exist, and which of them each tier
+        # runs. The stage set is derived from the functions the gate actually defines (stage_*), so a
+        # helper cannot masquerade as a stage and a new stage cannot be forgotten here. --help is for
+        # humans and stays the usage text.
+        --list)
+            printf 'stages: %s\n' "$(compgen -A function | sed -n 's/^stage_//p' | sort | tr '\n' ' ')"
+            printf 'default stages: %s\n' "$CI_DEFAULT_STAGES"
+            printf 'fast stages: %s\n' "$CI_FAST_STAGES"
+            printf 'full stages: %s\n' "$CI_FULL_STAGES"
+            exit 0
+            ;;
+        --help | -h) usage; exit 0 ;;
         fast) STAGES_REQUESTED+=($CI_FAST_STAGES) ;;
         full) STAGES_REQUESTED+=($CI_FULL_STAGES) ;;
         --require-clean) REQUIRE_CLEAN=1 ;;

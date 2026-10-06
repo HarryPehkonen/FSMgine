@@ -17,7 +17,7 @@
     {
       "repo_path": "tools/ci.sh",
       "kit_path": "templates/cpp/ci.sh",
-      "repo_sha256": "0dbfce89ab62f4444b919b281270662e7d1c7b48a36b1b281c286f5fc6afc077",
+      "repo_sha256": "35765b4a0f4d13a3fb7d131b620487d89eb74687065e11923c1a8ca3b3793b90",
       "kit_sha256": "da4c8a4085b06f2e710ca36a8c4818cf417875633706d7ea78014789c6544021",
       "adapted": true,
       "adapted_why": "adapted from the kit's template, not a copy: bash, its own stage set (selftest, docexamples, dbs, coverage), `--changed` scoping, and the tier variables added 2026-10-06 (kit d888e29). Diff it, never overwrite it."
@@ -49,7 +49,7 @@
     {
       "repo_path": "INCIDENTS.md",
       "kit_path": "INCIDENTS.md",
-      "repo_sha256": "1c5295efff249726147b697c83a32d8832bce0d298334920cf6e9ba5a9f23f25",
+      "repo_sha256": "9ce08cf21d53af9074f89dde4be60c64c932531a896e139e0db64bd478d3cfd0",
       "kit_sha256": "e6e636dbdd3e26c727aff5045c8d50427d79c41011b0c6ace1172e76ca099e0f",
       "adapted": true,
       "adapted_why": "this repo's own log, created 2026-10-06."
