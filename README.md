@@ -1,6 +1,6 @@
 # FSMgine
 
-A modern C++ library for building robust finite state machines with a fluent builder interface, thread-safety support, and memory-efficient string interning. This library was written with much support from several AI.
+A modern C++ library for building robust finite state machines with a fluent builder interface, thread-safety support, and memory-efficient string interning.
 
 ## Features
 
@@ -9,57 +9,34 @@ A modern C++ library for building robust finite state machines with a fluent bui
 - **Memory Efficient**: String interning reduces memory footprint and improves performance
 - **RAII Design**: Move-only semantics and clear ownership models
 - **Flexible Architecture**: No event loop management - integrates into existing applications
-- **Dual Library Variants**: Separate single-threaded and multi-threaded libraries for optimal performance and clear usage
+- **Dual Library Variants**: Separate single-threaded and multi-threaded libraries
 
 ## Library Architecture
 
-FSMgine provides two library variants to ensure clear thread-safety semantics:
+FSMgine ships two library variants that share one API but differ in locking:
 
-- **`libFSMgine`**: Single-threaded variant with no synchronization overhead
-- **`libFSMgineMT`**: Multi-threaded variant with full thread-safety using mutexes
+- **`libFSMgine`** — single-threaded; no synchronization overhead, no pthread.
+- **`libFSMgineMT`** — multi-threaded; mutex-protected operations at the cost of synchronization overhead.
 
-Both libraries share the same API but have different runtime characteristics:
-- The single-threaded variant (`FSMgine`) has no locking overhead and doesn't require pthread
-- The multi-threaded variant (`FSMgineMT`) provides thread-safe operations at the cost of synchronization overhead
-
-The libraries include:
-- `StringInterner` singleton implementation for memory-efficient state name storage
-- Core FSM functionality
-- Thread synchronization primitives (in the MT variant only)
-
-**Important:** You must link against the appropriate FSMgine library variant based on your threading requirements.
+Both contain the core FSM functionality and the `StringInterner` singleton; only the MT variant adds synchronization. Link the variant that matches your threading requirements.
 
 ## Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/HarryPehkonen/FSMgine.git
 cd FSMgine
-
-# Create build directory
 mkdir build && cd build
 
-# Configure with CMake (builds both library variants by default)
+# Configure (both variants by default; or pick one)
 cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
-
-# Or configure to build only specific variants:
-# Single-threaded only:
 cmake .. -DFSMGINE_BUILD_SINGLETHREADED=ON -DFSMGINE_BUILD_MULTITHREADED=OFF
-
-# Multi-threaded only:
 cmake .. -DFSMGINE_BUILD_SINGLETHREADED=OFF -DFSMGINE_BUILD_MULTITHREADED=ON
 
-# Build and install
 make
 sudo make install
 ```
 
-After installation, you'll have:
-- `/usr/local/lib/libFSMgine.{a,so}` - Single-threaded library
-- `/usr/local/lib/libFSMgineMT.{a,so}` - Multi-threaded library
-- `/usr/local/include/FSMgine/` - Shared headers
-- `/usr/local/lib/cmake/FSMgine/` - CMake config for single-threaded
-- `/usr/local/lib/cmake/FSMgineMT/` - CMake config for multi-threaded
+This installs `libFSMgine.{a,so}` and `libFSMgineMT.{a,so}` under `/usr/local/lib`, the shared headers under `/usr/local/include/FSMgine/`, and the CMake package configs under `/usr/local/lib/cmake/FSMgine/` and `/usr/local/lib/cmake/FSMgineMT/`.
 
 ## Quick Start
 
@@ -68,15 +45,12 @@ The simplest way to use FSMgine is with an event-less FSM, where state transitio
 ```cpp
 #include "FSMgine/FSMgine.hpp"
 #include <iostream>
-
 using namespace fsmgine;
 
-// Create an event-less FSM
-FSM turnstile;
+FSM turnstile;                 // an event-less FSM
 bool coin_inserted = false;
 bool door_pushed = false;
 
-// Build with fluent interface
 turnstile.get_builder()
     .onEnter("LOCKED", [](const std::monostate& event) { std::cout << "🔒 Locked\n"; })
     .onEnter("UNLOCKED", [](const std::monostate& event) { std::cout << "🔓 Unlocked\n"; })
@@ -94,17 +68,16 @@ turnstile.get_builder()
 // Run the FSM
 turnstile.setInitialState("LOCKED");
 
-// Simulate external events changing the state
+// External variables drive the transitions
 coin_inserted = true;
 turnstile.process(); // Transitions to UNLOCKED
-
 door_pushed = true;
 turnstile.process(); // Transitions back to LOCKED
 ```
 
 ## Quick Start (Event-Driven)
 
-For a more robust and scalable design, you can define specific events to drive the FSM. This avoids managing external state variables and is the recommended approach for most applications.
+For a more robust and scalable design, define specific events to drive the FSM. This avoids managing external state variables and is the recommended approach for most applications.
 
 ```cpp
 #include "FSMgine/FSMgine.hpp"
@@ -116,19 +89,16 @@ using namespace fsmgine;
 enum class TurnstileEvent { COIN_INSERTED, DOOR_PUSHED };
 
 int main() {
-    // 2. Create an FSM that handles these events
-    FSM<TurnstileEvent> turnstile;
+    FSM<TurnstileEvent> turnstile;   // 2. an FSM that handles these events
 
-    // 3. Build the FSM using predicates that check the event
+    // 3. Build with predicates that check the event
     turnstile.get_builder()
         .onEnter("LOCKED", [](const TurnstileEvent& triggeringEvent){ std::cout << "🔒 Locked\n"; })
         .onEnter("UNLOCKED", [](const TurnstileEvent& triggeringEvent){ std::cout << "🔓 Unlocked\n"; });
-
     turnstile.get_builder()
         .from("LOCKED")
         .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::COIN_INSERTED; })
         .to("UNLOCKED");
-
     turnstile.get_builder()
         .from("UNLOCKED")
         .predicate([](const TurnstileEvent& e) { return e == TurnstileEvent::DOOR_PUSHED; })
@@ -145,51 +115,18 @@ int main() {
 
 ### Prefer `using fsmgine::FSM;` Over `using namespace fsmgine;`
 
-Library names live in `fsmgine::`, and no header — not even the umbrella
-`FSMgine.hpp` — injects them into the global namespace for you (it only defines the
-`fsm` alias, `namespace fsm = fsmgine;`, as a convenience). That means your own code is
-free to declare its own `struct Transition`, right alongside `fsmgine::Transition` and
-`fsmgine::compiled::Transition` (the compiled back end's transition row) — *until* a
-`using namespace fsmgine;` pulls one of those in and makes `Transition` ambiguous.
-
-Prefer naming only what you use:
+No header injects `fsmgine::` names into the global namespace — the umbrella `FSMgine.hpp` only defines the alias `namespace fsm = fsmgine;`. A `using namespace fsmgine;` can therefore make one of your own names ambiguous: declare your own `Transition` and the compiler reports "reference to `Transition` is ambiguous", naming both candidates rather than which one you meant. Name only what you use:
 
 ```cpp
 using fsmgine::FSM;
 using fsmgine::EventlessFSM;
 ```
 
-Two compiler errors are worth recognizing if you do reach for `using namespace
-fsmgine;` anyway:
-
-- **A colliding using-directive**: if your own code also declares a `Transition` (or
-  any other name `fsmgine` exports), the compiler reports "reference to `Transition` is
-  ambiguous", naming both candidates — not which one you meant.
-- **A forgotten template argument is legal, not an error**: `FSM machine;` *compiles*.
-  `TEvent` defaults to `std::monostate`, so class template argument deduction succeeds and
-  you get the event-less machine — `FSM<std::monostate>`, the same type as `EventlessFSM`
-  and `FSM<>`. This is **not** the `std::pair` case: `std::pair p;` fails with "class
-  template argument deduction failed" precisely because `std::pair` has no default template
-  arguments, and `FSM` does. The trap is what you get next: an event-less machine has no
-  `process(const TEvent&)` overload at all, so a forgotten argument surfaces later as a
-  missing overload rather than as a deduction error.
-
-```cpp
-#include <FSMgine/FSMgine.hpp>
-#include <type_traits>
-
-int main() {
-    fsmgine::FSM machine;  // compiles: TEvent defaults to std::monostate
-    static_assert(std::is_same_v<decltype(machine), fsmgine::FSM<std::monostate>>);
-    static_assert(std::is_same_v<decltype(machine), fsmgine::EventlessFSM>);
-    return 0;
-}
-```
-
+A forgotten template argument is legal: `FSM machine;` compiles, because `TEvent` defaults to `std::monostate` and CTAD succeeds, giving `FSM<std::monostate>`, the same type as `EventlessFSM` — a forgotten argument then surfaces as a missing `process(const TEvent&)` overload, not a deduction error.
 
 ### Encapsulating the FSM in a Class
 
-For larger applications, it's best practice to encapsulate the FSM and its related state within a class. This provides a clean public API and hides implementation details.
+For larger applications, encapsulate the FSM and its related state in a class to expose a clean public API and hide implementation details.
 
 ```cpp
 using namespace fsmgine;
@@ -197,29 +134,20 @@ using namespace fsmgine;
 class Turnstile {
 public:
     Turnstile() {
-        // Lambdas can capture `this` to access member variables
-        fsm_.get_builder()
-            .from("LOCKED")
-            .predicate([this](const std::monostate& event) { return coin_inserted_; })
-            .action([this](const std::monostate& event) { coin_inserted_ = false; })
+        // Lambdas capture `this` to reach the member variables
+        fsm_.get_builder().from("LOCKED")
+            .predicate([this](const std::monostate&) { return coin_inserted_; })
+            .action([this](const std::monostate&) { coin_inserted_ = false; })
             .to("UNLOCKED");
-
-        fsm_.get_builder()
-            .from("UNLOCKED")
-            .predicate([this](const std::monostate& event) { return door_pushed_; })
-            .action([this](const std::monostate& event) { door_pushed_ = false; })
+        fsm_.get_builder().from("UNLOCKED")
+            .predicate([this](const std::monostate&) { return door_pushed_; })
+            .action([this](const std::monostate&) { door_pushed_ = false; })
             .to("LOCKED");
-
         fsm_.setInitialState("LOCKED");
     }
-
-    // Public methods control the FSM's inputs
-    void insertCoin() { coin_inserted_ = true; }
-    void pushDoor() { door_pushed_ = true; }
-
-    // The main loop calls process() to run the logic
-    void update() { fsm_.process(); }
-
+    void insertCoin() { coin_inserted_ = true; }   // the class owns the inputs
+    void pushDoor()   { door_pushed_ = true; }
+    void update()     { fsm_.process(); }          // the main loop ticks the FSM
 private:
     FSM<> fsm_;
     bool coin_inserted_ = false;
@@ -229,7 +157,7 @@ private:
 
 ### Transitions Without Predicates
 
-If a transition should always occur (no condition), you can omit the predicate:
+If a transition should always occur, omit the predicate:
 
 ```cpp
 fsm.get_builder()
@@ -238,20 +166,11 @@ fsm.get_builder()
     .to("STATE_B");
 ```
 
-A transition with no predicate is **unconditional**: while the machine is in `STATE_A` it fires
-on *any* event, not merely on the events your other guards reject. That is a real feature
-(`Transition::predicatesPass()` returns true for an empty predicate list), so write it
-deliberately, and give it the last position among that state's transitions, because the
-**first matching transition wins**.
+A transition with no predicate is **unconditional**: while the machine is in `STATE_A` it fires on *any* event, not merely on the events your other guards reject. That is a real feature (`Transition::predicatesPass()` returns true for an empty predicate list), so write it deliberately, and give it the last position among that state's transitions, because the **first matching transition wins**.
 
 ### One Transition Per Chain: `to()` Ends It
 
-`to()` is the commit point: it moves the transition you have just built into the machine, and
-it returns `void` on purpose, so a chain continued after it does not compile (`invalid use of
-void`) instead of quietly doing the wrong thing.
-
-The builder is spent at `to()`. Start the next transition with a fresh `get_builder()`, or call
-`from()` again on the same builder — both work, because the FSMBuilder itself is not consumed:
+`to()` is the commit point: it moves the transition you have just built into the machine, and returns `void` on purpose, so a chain continued after it does not compile (`invalid use of void`) instead of quietly doing the wrong thing. The builder is spent at `to()`, but the `FSMBuilder` itself is not consumed — start the next transition with a fresh `get_builder()` or call `from()` again on the same builder:
 
 ```cpp
 auto builder = fsm.get_builder();
@@ -259,39 +178,23 @@ builder.from("STATE_A").predicate([](const EventType& e) { return e.type == "x";
 builder.from("STATE_B").predicate([](const EventType& e) { return e.type == "y"; }).to("STATE_A");
 ```
 
-Keep that `TransitionBuilder` in a variable and reuse it, though, and you will be told so: after
-`to()` it holds an empty transition, and an empty transition has no guard, so a second `to()` on
-it would register a **catch-all**. That is a programming error, so it throws `FSMBuildError` —
-as does calling `predicate()` or `action()` after `to()`. `TransitionBuilder::to()` documents
-this, and the tests pin it.
+Reusing a spent `TransitionBuilder` is a programming error: after `to()` it holds an empty transition with no guard, so a second `to()` would register a **catch-all**, and calling `predicate()` or `action()` after `to()` is equally wrong. Both throw `FSMBuildError`; `TransitionBuilder::to()` documents this, and the tests pin it.
 
 ## State Management
 
 FSMgine provides two methods for setting the current state:
 
-- **`setInitialState(state)`**: Use this for first-time FSM initialization. It sets the current state and executes any `onEnter` actions for that state. This should be called once after building your FSM to establish the starting state.
-
-- **`setCurrentState(state)`**: Use this for runtime state changes when you need to forcibly change the state outside of normal transitions. It executes `onExit` actions for the current state (if any) and `onEnter` actions for the new state. This is useful for reset functionality or error recovery scenarios.
+- **`setInitialState(state)`**: first-time initialization. Sets the current state and runs any `onEnter` actions for it; call it once after building the FSM.
+- **`setCurrentState(state)`**: runtime state changes outside normal transitions. Runs `onExit` actions for the current state (if any) and `onEnter` actions for the new one; useful for reset or error recovery.
 
 ## String Interning and Memory
 
-Every state name is interned: the FSM stores a `std::string_view` into the
-interning arena rather than copying text, which turns name comparisons into
-pointer comparisons and makes repeated names free.
+Every state name is interned: the FSM stores a `std::string_view` into an append-only, process-global arena rather than copying text, which turns name comparisons into pointer comparisons and makes repeated names free. Two consequences matter before you ship:
 
-Two consequences are worth knowing before you ship:
+- **A returned `string_view` stays valid for the interner's lifetime.** That is the whole point of the design, and it is why `intern()` is safe to call from anywhere.
+- **The arena is append-only.** It retains every *distinct* name it has ever been given; that memory is not returned until you release it. A long-running process that interns a large number of unique names — a code generator, a batch job, a fuzzer — will grow with it.
 
-- **A returned `string_view` stays valid for the interner's lifetime.** That is
-  the whole point of the design, and it is why `intern()` is safe to call from
-  anywhere.
-- **The arena is append-only.** It retains every *distinct* name it has ever been
-  given; that memory is not returned until you release it. A long-running process
-  that interns a large number of unique names — a code generator, a batch job, a
-  fuzzer — will grow with it.
-
-`StringInterner::resetArena()` releases the arena and **invalidates every view the
-interner ever handed out**. Call it between independent workloads, when nothing holds an
-outstanding view:
+`StringInterner::resetArena()` releases the arena and **invalidates every view the interner ever handed out**. Call it between independent workloads, when nothing holds an outstanding view:
 
 ```cpp
 using namespace fsmgine;   // each example stands on its own
@@ -301,40 +204,13 @@ auto& interner = StringInterner::instance();
 interner.resetArena();   // arena released; every previous view is now dangling
 ```
 
-`StringInterner::arenaSize()` reports how many strings the arena currently retains — useful
-for diagnostics and tests, and for asserting that a workload stayed bounded.
-
-- **There is no per-name release.** The arena is a deque precisely so that inserting a name
-  never invalidates views into earlier ones, which is also why removing a single name is not
-  possible: memory is released either not at all, or entirely, by `resetArena()`.
-- **Nothing releases it for you.** The interner is a process-global singleton: its destructor
-  releases both containers at program exit, and `resetArena()` is the only way to release them
-  earlier. Intern a bounded vocabulary — state names are normally a small fixed set, so the
-  arena stays small — and treat unbounded name generation as the case that needs
-  `resetArena()` at a quiet point, with machines destroyed first since they hold interned
-  state names.
-
-In a program that builds an FSM and keeps it alive, the arena holds one copy per
-distinct name — hundreds of bytes. The growth above only matters when the set of
-names is unbounded.
+`StringInterner::arenaSize()` reports how many strings the arena currently retains — useful for diagnostics and tests. There is no per-name release: memory is released either not at all or entirely, by `resetArena()`, and nothing releases it for you before program exit. Intern a bounded vocabulary (state names are normally a small fixed set) and treat unbounded name generation as the case that needs `resetArena()` at a quiet point, with machines destroyed first.
 
 ## Compiled Back End
 
-`fsmgine::FSM<TEvent>` (the interpreted back end, everything above this section) is built
-for machines that are **defined at run time**: states are strings, guards are
-`std::function` closures, and actions can capture whatever context they need. That
-flexibility has a cost — see the benchmark table below.
+`fsmgine::FSM<TEvent>` (the interpreted back end, everything above this section) is built for machines that are **defined at run time**: states are strings, guards are `std::function` closures, and actions can capture whatever context they need. That flexibility has a cost — see the benchmark table below.
 
-`fsmgine::compiled::Machine<State, Event>` is a second, additive back end for the
-opposite case: **the machine is known when you write the code**. States are a
-user-defined `enum`, a transition is a row of plain data (two enums, a bool, a comparison
-op and an int), and `process()` is a linear scan of that table with no string hashing and
-no `std::function` call on the hot path.
-
-The table is plain data, so it can be written by hand or emitted by a generator.
-[FSMTable](https://github.com/HarryPehkonen/FSMTable) reads a small text format and writes exactly
-this table — including entry and exit actions, composed into the generated functions — with the
-generated machines' tests alongside it.
+`fsmgine::compiled::Machine<State, Event>` is a second, additive back end for the opposite case: **the machine is known when you write the code**. States are a user-defined `enum`, a transition is a row of plain data (two enums, a bool, a comparison op and an int), and `process()` is a linear scan of that table with no string hashing and no `std::function` call on the hot path. The table is plain data, so it can be written by hand or emitted by a generator: [FSMTable](https://github.com/HarryPehkonen/FSMTable) reads a small text format and writes exactly this table — including entry and exit actions, composed into the generated functions — with the generated machines' tests alongside it.
 
 ```cpp
 #include <FSMgine/compiled/Machine.hpp>
@@ -359,122 +235,63 @@ int main() {
 }
 ```
 
-See `examples/compiled_machine.cpp` for the same machine built on both back ends,
-driven by one shared event script and asserted to agree at every step.
-
-### A separate header
-
-`#include <FSMgine/compiled/Machine.hpp>` — a header the umbrella `FSMgine.hpp`
-**deliberately does not include**, so existing users of the interpreted back end pay
-nothing for a feature they never asked for.
+See `examples/compiled_machine.cpp` for the same machine built on both back ends, driven by one shared event script and asserted to agree at every step. `#include <FSMgine/compiled/Machine.hpp>` is a header the umbrella `FSMgine.hpp` **deliberately does not include**, so existing users of the interpreted back end pay nothing for a feature they never asked for.
 
 ### Four limits, plainly (v1)
 
-- **Actions are plain function pointers, and cannot capture.** `Action<Event>` is
-  `void (*)(const Event&)`, not a `std::function` — context an action needs must come
-  from a file-scope object. An action that writes to a global reintroduces a data race
-  the library cannot protect it from; that is the caller's responsibility, same as any
-  other shared mutable state.
-- **One refined field per machine.** A `Transition` compares at most one `int` member of
-  `Event` (via `eq()`/`lt()`/`le()`/`gt()`/`ge()`), and every refined transition in a
-  given machine must refine the *same* member — a second `when(kind, refinement)` on a
-  different member throws `CompiledMachineError`.
-- **One action per transition.** A second `.action(...)` call on the same transition,
-  before `.to()`, throws `CompiledMachineError` rather than silently replacing the first.
-- **The event needs a member named `kind`.** Its type is read via
-  `decltype(Event::kind)` and becomes the machine's `EventKind` — a naming convention,
-  not a template parameter, because C++17 cannot deduce a third class-template parameter
-  from the two-argument `Machine<State, Event>` the constructor is written against.
+- **Actions are plain function pointers, and cannot capture.** `Action<Event>` is `void (*)(const Event&)`, not a `std::function` — context an action needs must come from a file-scope object. An action that writes to a global reintroduces a data race the library cannot protect it from; that is the caller's responsibility.
+- **One refined field per machine.** A `Transition` compares at most one `int` member of `Event` (via `eq()`/`lt()`/`le()`/`gt()`/`ge()`), and every refined transition in a given machine must refine the *same* member — a second `when(kind, refinement)` on a different member throws `CompiledMachineError`.
+- **One action per transition.** A second `.action(...)` call on the same transition, before `.to()`, throws `CompiledMachineError` rather than silently replacing the first.
+- **The event needs a member named `kind`.** Its type is read via `decltype(Event::kind)` and becomes the machine's `EventKind` — a naming convention, not a template parameter, because C++17 cannot deduce a third class-template parameter from the two-argument `Machine<State, Event>` the constructor is written against.
 
-Richer per-transition logic — multiple guarded fields, captured state, arbitrary
-predicates — belongs on `fsmgine::FSM<TEvent>` instead.
+Richer per-transition logic — multiple guarded fields, captured state, arbitrary predicates — belongs on `fsmgine::FSM<TEvent>` instead.
 
 ### Thread safety
 
-A `compiled::Machine` is not synchronized, and there is no `compiled::MachineMT`
-variant. It owns per-instance mutable state — `currentState_` — and `process()`,
-`setInitialState()` and `setCurrentState()` write it, so **one machine must not be driven
-from two threads at once**: a shared instance is a data race, and nothing in the library
-will tell you. Build one machine per thread; they share nothing.
+A `compiled::Machine` owns per-instance mutable state (`currentState_`) written by `process()`, `setInitialState()` and `setCurrentState()`, and it is not synchronized (there is no `compiled::MachineMT`). **One machine must not be driven from two threads at once**; build one machine per thread. Because an action cannot capture, the examples reach caller state through a file-scope pointer installed for one event; that pointer is **per-thread global, not per-machine**, so install → process → clear with nothing in between is the contract, not an accident of the examples.
 
-The context pattern the actions require has its own version of that rule. Because an action cannot
-capture, the examples reach caller state through a file-scope pointer installed for the duration of
-one event; that pointer is **per-thread global, not per-machine**. Anything else running on the
-thread between the install and the clear can see it, and a machine driven from inside another
-machine's action finds it already replaced. One machine per thread, install → process → clear with
-nothing in between, is the whole contract rather than an accident of the examples. FSMTable's
-`QUESTIONS.md` Q11 records the same reading from the caller's side, where the pointer is installed
-once per line of input.
-
-What the compiled back end does remove is `StringInterner`'s process-global state:
-nothing is interned, no string is hashed and no `std::function` is called, so machines on
-different threads never contend with each other — unlike `fsmgine::FSM`, which serializes
-access to that shared interner, with `FSMGINE_MULTI_THREADED` gating the locking. The
-other race stays yours: an action that writes to a global is your race, not the machine's.
+What it does remove is `StringInterner`'s process-global state: nothing is interned, no string is hashed and no `std::function` is called, so machines on different threads never contend — unlike `fsmgine::FSM`, which serializes access to that shared interner, with `FSMGINE_MULTI_THREADED` gating the locking. An action that writes to a global reintroduces a race the machine cannot fix.
 
 ### Actions run before the state change
 
-Exactly like the interpreted back end: a firing transition's action runs **before**
-`currentState_` is updated, so an action can still observe the state it is leaving via
-`getCurrentState()` on any machine it can reach.
+Exactly like the interpreted back end: a firing transition's action runs **before** `currentState_` is updated, so an action can still observe the state it is leaving via `getCurrentState()`.
 
 ## Example Use Cases
 
-These examples demonstrate how to apply FSMgine to solve common problems. They illustrate patterns for managing state and logic within the FSM's actions and predicates.
+Common problems solved with FSMgine.
 
 ### 1. Resource Pool Management
-Demonstrates a thread-safe resource pool.
-- **Pattern:** The FSM models the state of the pool (`IDLE`, `BUSY`, `EMPTY`). FSM actions modify an `std::atomic<int>` counter for available resources. This example should be linked against `FSMgineMT` to ensure thread-safe FSM operations in combination with atomic variables for concurrent access safety.
+A thread-safe resource pool: the FSM models the pool state (`IDLE`, `BUSY`, `EMPTY`) and its actions modify an `std::atomic<int>` counter for available resources. Link against `FSMGineMT` for thread-safe FSM operations combined with atomics.
 
 ### 2. Protocol Parser
-Shows how to build a state machine for parsing a simple network protocol string.
-- **Pattern:** The FSM transitions character by character through states like `WAITING_HEADER`, `READING_PAYLOAD`, and `VALIDATING`. Actions append characters to buffer strings (`current_command`, `current_param`). This pattern is ideal for stream processing and validation tasks.
-- **Generated from a text format:** [FSMTable](https://github.com/HarryPehkonen/FSMTable) builds a protocol machine of this kind onto the compiled back end — a connection lifecycle with timeouts, retransmission and a sink state — and `fsmtable-gen` turns a text file into the table, with 12 unit tests and a recorded trace in `examples/protocol/`.
+Parse a simple network protocol string: the FSM steps character by character through states like `WAITING_HEADER`, `READING_PAYLOAD`, and `VALIDATING`, with actions appending to buffer strings (`current_command`, `current_param`). Ideal for stream processing and validation.
+- **Generated from a text format:** [FSMTable](https://github.com/HarryPehkonen/FSMTable) builds a protocol machine of this kind onto the compiled back end — a connection lifecycle with timeouts, retransmission and a sink state — with 12 unit tests and a recorded trace in `examples/protocol/`.
 
 ### 3. Calculator Implementation
-Implements a calculator using two FSMs: one for tokenizing the input string and another for parsing and evaluating the expression.
-- **Pattern:** Shows a more advanced, two-stage FSM design. The tokenizer FSM produces a stream of `Token` objects, which are then fed as events into the parser FSM. Actions in the parser manipulate stacks for values and operators, demonstrating how to maintain complex context between states.
+A calculator built from two FSMs: one for tokenizing the input string, one for parsing and evaluating the expression.
+- **Pattern:** A two-stage design. The tokenizer FSM produces a stream of `Token` objects, fed as events into the parser FSM, whose actions manipulate value and operator stacks to maintain context between states.
 - **Generated from a text format:** this two-stage shape, written as text and generated onto the compiled back end, with its own tests and a recorded session, is [FSMTable](https://github.com/HarryPehkonen/FSMTable)'s `examples/calculator/`.
 
 ### 4. Parentheses Checker
-A simple but effective example that validates balanced parentheses in a string.
-- **Pattern:** An FSM processes the input character by character. An `onEnter` action pushes opening parentheses onto a `std::stack`, while other transitions pop and validate closing parentheses. This is a minimal but complete example of using an FSM for validation logic.
+Validate balanced parentheses in a string.
+- **Pattern:** An FSM processes the input character by character. An `onEnter` action pushes opening parentheses onto a `std::stack`, while other transitions pop and validate closing ones.
 
 ## Integration
 
 ### CMake Integration
 
-FSMgine provides two library variants that can be used based on your threading requirements:
-
-#### Single-Threaded Usage
+FSMgine provides two library variants, used according to your threading requirements:
 
 ```cmake
 cmake_minimum_required(VERSION 3.20)
 project(your_project)
 
-find_package(FSMgine REQUIRED)
-
+find_package(FSMgine REQUIRED)                    # multi-threaded: FSMgineMT
 add_executable(your_project src/main.cpp)
-target_link_libraries(your_project PRIVATE FSMgine::FSMgine)
+target_link_libraries(your_project PRIVATE FSMgine::FSMgine)   # multi-threaded: FSMgine::FSMgineMT
 ```
 
-#### Multi-Threaded Usage
-
-```cmake
-cmake_minimum_required(VERSION 3.20)
-project(your_project)
-
-find_package(FSMgineMT REQUIRED)
-
-add_executable(your_project src/main.cpp)
-target_link_libraries(your_project PRIVATE FSMgine::FSMgineMT)
-```
-
-**Note:** The CMake targets automatically handle:
-- Linking against the appropriate static library
-- Including necessary headers
-- Linking against `Threads::Threads` (for FSMgineMT only)
-- Setting the `FSMGINE_MULTI_THREADED` compile definition (for FSMgineMT only)
+The target automatically links the appropriate static library, includes the necessary headers, links `Threads::Threads` (FSMgineMT only) and sets the `FSMGINE_MULTI_THREADED` compile definition (FSMgineMT only).
 
 ### Build Options
 
@@ -489,21 +306,12 @@ target_link_libraries(your_project PRIVATE FSMgine::FSMgineMT)
 
 ## Documentation
 
-FSMgine uses Doxygen for API documentation. The documentation is automatically built and deployed to GitHub Pages when changes are pushed to the main branch.
-
-### Viewing Documentation Online
-
-Visit the [FSMgine Documentation](https://harrypehkonen.github.io/FSMgine/) to browse the latest API documentation.
-
-### Building Documentation Locally
-
-To build the documentation locally:
+FSMgine uses Doxygen for API documentation, deployed to GitHub Pages on every push to the main branch. Browse the latest at the [FSMgine Documentation](https://harrypehkonen.github.io/FSMgine/), or build it locally:
 
 ```bash
 # Install Doxygen (if not already installed)
-sudo apt-get install doxygen graphviz  # On Ubuntu/Debian
-# or
-brew install doxygen graphviz          # On macOS
+sudo apt-get install doxygen graphviz  # Ubuntu/Debian
+brew install doxygen graphviz          # macOS
 
 # Configure with documentation enabled
 cmake .. -DBUILD_DOCUMENTATION=ON
@@ -516,11 +324,9 @@ open docs/html/index.html              # On macOS
 xdg-open docs/html/index.html          # On Linux
 ```
 
-The generated documentation includes:
-- Complete API reference for all classes
-- Usage examples and code snippets
-- Module organization and relationships
-- Class diagrams and inheritance graphs
+The generated documentation includes the complete API reference, usage examples, module organization, and class diagrams.
+
+See [PERFORMANCE.md](PERFORMANCE.md) for the profiling workflow and the recorded performance results.
 
 ## Testing and Fuzzing
 
@@ -539,91 +345,37 @@ cmake --build build-fuzz --target fuzz_fsmgine retention_check
 ./build-fuzz/retention_check             # asserts resident memory stays bounded
 ```
 
-A fuzz target must call `StringInterner::resetArena()` between inputs, with everything
-holding a view destroyed first — see the "Fuzzing" section of `CLAUDE.md` for the
-rule and the reason.
+A fuzz target must call `StringInterner::resetArena()` between inputs, with everything holding a view destroyed first — see the "Fuzzing" section of `CLAUDE.md` for the rule and the reason.
 
 ## Troubleshooting
 
 ### Undefined references to `StringInterner`
 
-If you see linker errors like:
+Linker errors like:
 ```
 undefined reference to `fsmgine::StringInterner::instance()'
 undefined reference to `fsmgine::StringInterner::intern(...)'
 ```
 
-This means you're not linking against the FSMgine library. Ensure:
-1. You've called `find_package(FSMgine REQUIRED)` or `find_package(FSMgineMT REQUIRED)` in your CMakeLists.txt
-2. You've added the appropriate target to your link libraries:
-   - `FSMgine::FSMgine` for single-threaded
-   - `FSMgine::FSMgineMT` for multi-threaded
-3. The appropriate library is properly installed (`sudo make install` was successful)
-
-Example fix:
-```cmake
-# For single-threaded:
-find_package(FSMgine REQUIRED)
-target_link_libraries(your_target PRIVATE FSMgine::FSMgine)
-
-# For multi-threaded:
-find_package(FSMgineMT REQUIRED)
-target_link_libraries(your_target PRIVATE FSMgine::FSMgineMT)
-```
-
-### Memory grows in a long-running process
-
-State names are interned into an append-only, process-global arena, so a program
-that interns a very large number of *distinct* names grows with it. Call
-`StringInterner::resetArena()` between independent workloads to release the arena —
-noting that it invalidates outstanding views. See "String Interning and Memory".
+mean you are not linking against the FSMgine library. Ensure you have called `find_package(FSMgine REQUIRED)` or `find_package(FSMgineMT REQUIRED)` in your CMakeLists.txt, added the appropriate target (`FSMgine::FSMgine` or `FSMgine::FSMgineMT`) to your link libraries, and installed the library (`sudo make install`).
 
 ### Thread-related linking errors
 
-If you're using FSMgineMT but getting pthread-related errors:
-- The FSMgineMT CMake configuration should automatically handle pthread linking
-- If issues persist, ensure your system has pthread development headers installed
+With FSMgineMT, the CMake configuration links pthread automatically; if pthread errors persist, install the pthread development headers.
 
 ### Mixing library variants
 
-**Important:** Do not link both FSMgine and FSMgineMT in the same executable. Choose one based on your threading requirements:
-- Use `FSMgine` for single-threaded applications (no synchronization overhead)
-- Use `FSMgineMT` for multi-threaded applications (thread-safe operations)
+**Important:** Do not link both FSMgine and FSMgineMT in the same executable. Choose `FSMgine` for single-threaded applications (no synchronization overhead) or `FSMgineMT` for multi-threaded applications.
 
 ### FSMgine package not found
 
-If CMake cannot find FSMgine or FSMgineMT:
-1. Ensure the libraries are installed: `sudo make install` from the FSMgine build directory
-2. Check that you built the variant you're trying to use
-3. Check installation prefix matches your system's CMake search paths
-4. Alternatively, specify the path manually:
-   ```cmake
-   find_package(FSMgine REQUIRED PATHS /path/to/fsmgine/install)
-   # or
-   find_package(FSMgineMT REQUIRED PATHS /path/to/fsmgine/install)
-   ```
+If CMake cannot find the package, ensure the libraries are installed (`sudo make install`), that you built the variant you are using, and that the installation prefix matches your CMake search paths — otherwise pass `PATHS /path/to/fsmgine/install` to `find_package`.
 
 ## When not to use FSMgine
 
-`benchmarks/bench_comparison.cpp` times four implementations of the same five-transition
-machine (Idle/Running/Paused/Done, with a guarded Running→Done transition) under one
-`<chrono>`-based harness: FSMgine itself (the interpreted back end), a hand-rolled
-`switch` over an `enum class` (the compile-time baseline), a hand-rolled runtime table —
-a `std::array` of `{state, event, guard, target}` scanned linearly, with small ints
-instead of strings and no `std::function` — and `fsmgine::compiled::Machine` on the same
-states and events. All four run the same fixed, deterministic event script; the
-benchmark asserts they produce the identical state sequence before timing anything, so a
-divergence in behavior can't masquerade as a performance number. Construction and event
-processing are timed separately, and every figure is a median over several trials, never
-a best-of. It is a single machine, built and run on one laptop — indicative of where the
-costs come from, not a guarantee of what you'll measure on your hardware.
+`benchmarks/bench_comparison.cpp` times four implementations of the same five-transition machine (Idle/Running/Paused/Done, with a guarded Running→Done transition) under one `<chrono>`-based harness: FSMgine itself (the interpreted back end), a hand-rolled `switch` over an `enum class` (the compile-time baseline), a hand-rolled runtime table — a `std::array` of `{state, event, guard, target}` scanned linearly, with small ints instead of strings and no `std::function` — and `fsmgine::compiled::Machine` on the same states and events. All four run the same fixed, deterministic event script, and the benchmark asserts they produce the identical state sequence before timing anything. Every figure is a median over several trials, never a best-of, on one machine built and run on one laptop — indicative of where the costs come from, not a guarantee of what you'll measure on your hardware.
 
-Two limits worth stating plainly. **"Bytes per machine" is `sizeof()` of the implementation
-object, not its heap footprint** — FSMgine's real memory cost also includes its state-name
-map, the interned-name arena and its `std::function` guards, which a true figure would have to
-count by instrumenting the allocator. And the hand-rolled table's construction cost is
-near-zero because its table is `constexpr static`, shared like a vtable; a table parsed from
-configuration at startup would pay more than the zero shown here.
+Two limits worth stating plainly. **"Bytes per machine" is `sizeof()` of the implementation object, not its heap footprint** — FSMgine's real memory cost also includes its state-name map, the interned-name arena and its `std::function` guards. And the hand-rolled table's construction cost is near-zero because its table is `constexpr static`, shared like a vtable; a table parsed from configuration at startup would pay more than the zero shown here.
 
 <!-- BENCH-TABLE:BEGIN -->
 
@@ -653,25 +405,9 @@ cmake --build build --target FSMgine_comparison
 
 What the numbers suggest:
 
-- **Hand-rolled `switch`** when the machine is fixed at compile time and the hot path
-  matters: a five-transition machine is ten lines and needs no library.
-- **The hand-rolled runtime table** when machines must be defined at run time but strings
-  and `std::function` are too expensive for the hot path — it keeps the dynamic-dispatch
-  shape without either cost.
-- **`fsmgine::compiled::Machine`** (see "Compiled Back End" above) when the machine is
-  known when you write the code and you want that same table shape: an enum state kept in
-  the table instead of an interned string, and one plain function pointer per transition
-  instead of `onEnter`/`onExit`-style actions. Names remain available for display through
-  `withNames()`, so nothing is lost for logging.
-- **FSMgine** when the machine *is* data — config, plugins, user input — when
-  string-named states help logging and introspection, when guards and actions should be
-  first-class values instead of hand-written branches, when you want a compile-time
-  choice of thread safety, and when a tested lifetime story matters more than shaving
-  nanoseconds off a transition.
-- The single-threaded `FSMgine` target (not `FSMgineMT`) is the one to link in a hot
-  loop — it compiles out the mutex entirely rather than paying for one per operation.
-
-The table is the actual evidence; read it before taking any of the above as a verdict.
+- **Hand-rolled `switch`** when the machine is fixed at compile time and the hot path matters (a five-transition machine is ten lines and needs no library), or **the hand-rolled runtime table** when machines must be defined at run time but strings and `std::function` are too expensive for the hot path.
+- **`fsmgine::compiled::Machine`** (see "Compiled Back End" above) when the machine is known when you write the code and you want that same table shape — an enum state instead of an interned string, one plain function pointer per transition instead of `onEnter`/`onExit` actions, names still available through `withNames()`.
+- **FSMgine** when the machine *is* data (config, plugins, user input), when string-named states help logging and introspection, or when guards and actions should be first-class values. Link the single-threaded `FSMgine` target (not `FSMgineMT`) in a hot loop — it compiles out the mutex entirely. The table itself is the evidence; read it before taking any of the above as a verdict.
 
 ## Requirements
 
@@ -682,4 +418,4 @@ The table is the actual evidence; read it before taking any of the above as a ve
 
 ## License
 
-Please see the LICENSE file. This code is released to the public domain. Specifics are in the file. 
+Please see the LICENSE file. This code is released to the public domain. Specifics are in the file.
