@@ -8,29 +8,32 @@
 #     git config core.hooksPath .githooks
 #
 # Nothing leaves the machine to make this work: no GitHub, no service, no account.
-#
-# FSMgine-specific order (measured 2026-09-30: configure 0.05 s, build 0.11 s,
-# tests 0.02 s, clang-tidy 4.3 s/TU, clang-format 9.4 s for the whole tree):
-#   format  first  — it defines the text the later stages judge
-#   build          — produces the compile database clang-tidy needs
-#   lint           — scoped to the TUs this commit touches, so a typical commit
-#                    is 3-10 s rather than the ~25 s a full lint costs
-#   tests          — last: the most decisive stage, after the cheap ones passed
-#
-# The list itself is tools/ci.sh's CI_FAST_STAGES, and this hook names the tier rather than
-# repeating it: a stage added to the gate reaches the hook without editing this file.
+# It is the same gate a human runs by hand and the nightly clean checkout runs.
 #
 # Deliberate bypass when you need one:  git commit --no-verify
 #
+# 2026-10-06 (card t_075c0a6f): the gate IS gate.toml now, run by kit-ci, so this hook NAMES A
+# TIER instead of repeating a stage list — the list lives in one place, gate.toml's
+# [tier.fast], and a hook that names the tier cannot drift from it. The kit's `tools/ci.sh`
+# branch is gone with the file it tested.
 set -uo pipefail
 
 root=$(git rev-parse --show-toplevel) || exit 1
 
-if [ -x "$root/tools/ci.sh" ]; then
-    exec "$root/tools/ci.sh" --changed fast
+# C++: a full run is minutes, so commit gets the fast tier — the list gate.toml declares as
+# [tier.fast]. Everything else (the sanitizers, fuzz, tidy, the clean-checkout stage) belongs
+# to pre-push.
+if [ -x "$root/scripts/gate.sh" ]; then
+    # The old hook ran `tools/ci.sh --changed fast`: the fast tier over the files this commit
+    # touches. CI_SCOPE_ALL=0 is that flag (scripts/gate-env.sh reads it), so a commit that
+    # deletes a source file does not hand the format stage a path that is gone - the incident
+    # tools/ci_selftest.sh exists for. The tier NAME still comes from gate.toml.
+    export CI_SCOPE_ALL=0
+    exec "$root/scripts/gate.sh" --tier fast
 fi
 
 # No gate found is a failure, not a warning: a silently unarmed gate is worse than
 # no gate, because it looks armed.
-printf 'pre-commit: no gate found. Expected %s/tools/ci.sh\n' "$root" >&2
+printf 'pre-commit: no gate found. Expected %s/scripts/gate.sh (with gate.toml next to it).\n' \
+    "$root" >&2
 exit 1

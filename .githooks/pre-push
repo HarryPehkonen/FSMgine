@@ -7,28 +7,28 @@
 #
 #     git config core.hooksPath .githooks
 #
-# Everything here is local. The stages are tools/ci.sh's CI_FULL_STAGES, named here as the tier
-# rather than spelled out. The reasoning that used to justify an explicit list is unchanged — a
-# stage that exists but never runs is a decoration, so `asan` (the second configuration), `fuzz`
-# (Harri's "quick fuzzing on push" — 60 s, CI_FUZZ_SECONDS to change it) and `pristine` (a clean
-# checkout of HEAD actually builds and passes) must actually run — and it is exactly why the full
-# tier is its own variable rather than the default list. Spelling it out here is what let this
-# hook fall behind the gate: the comment at the top of tools/ci.sh documented eight stages while
-# this line ran fourteen. tools/kit-probes/hook-tiers-agree.sh now fails the gate over that.
+# This hook is the only caller of the "never publish an uncommitted tree" rule. The old gate
+# took it as a flag (`--require-clean`); gate.toml's vocabulary has no per-run flags, so the
+# flag became CI_REQUIRE_CLEAN=1 in this hook's environment, which scripts/tree.sh reads. The
+# rule itself did not move, and a hand run still gets the full tier without it.
 #
-#   --require-clean  fails on uncommitted tracked changes: you publish commits,
-#                    not a working tree. The fuzz stage writes its corpus into
-#                    build-fuzz/ (gitignored) so this stays satisfiable.
+# The full tier also proves the COMMITTED tree is complete: the `pristine` stage archives HEAD
+# into a temp dir and configures, builds and tests it there.
 #
 # Deliberate bypass when you need one:  git push --no-verify
 #
+# 2026-10-06 (card t_075c0a6f): the stage list moved into gate.toml, so this hook names the
+# tier. The old hook also ran a `kitprobes` stage; that stage and its probe scripts went with
+# the conversion (the closing note in gate.toml has the measurement).
 set -uo pipefail
 
 root=$(git rev-parse --show-toplevel) || exit 1
 
-if [ -x "$root/tools/ci.sh" ]; then
-    exec "$root/tools/ci.sh" --require-clean full
+if [ -x "$root/scripts/gate.sh" ]; then
+    export CI_REQUIRE_CLEAN=1
+    exec "$root/scripts/gate.sh" --tier full
 fi
 
-printf 'pre-push: no gate found. Expected %s/tools/ci.sh\n' "$root" >&2
+printf 'pre-push: no gate found. Expected %s/scripts/gate.sh (with gate.toml next to it).\n' \
+    "$root" >&2
 exit 1
