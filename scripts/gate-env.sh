@@ -115,6 +115,13 @@ if [ -f .ci.env ]; then
     . ./.ci.env
 fi
 
+# Every stage redirects into $CI_LOG_DIR, and the directory is gitignored, so it does NOT
+# exist in a fresh clone: without this line every redirect dies with "No such file or
+# directory" and each stage reports its own failure (12 of the 14 full-tier stages, measured
+# 2026-10-07). The pre-conversion tools/ci.sh created it here; the line did not survive the
+# conversion into gate.toml/gate.sh (card t_0dfa7097).
+mkdir -p "$CI_LOG_DIR"
+
 REQUIRE_CLEAN=${CI_REQUIRE_CLEAN:-0}
 WRITE_BASELINE=${CI_WRITE_BASELINE:-0}
 WRITE_COV_BASELINE=${CI_WRITE_COV_BASELINE:-0}
