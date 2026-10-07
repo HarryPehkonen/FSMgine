@@ -40,13 +40,13 @@ default and uses GTest when it is installed.
 
 ## The Local Gate
 
-`tools/ci.sh` is the single definition of every check in this repo — CI and local
+`scripts/gate.sh` is the single definition of every check in this repo — CI and local
 hooks both call it, so there is one place to read or change the rules.
 
 ```bash
-./tools/ci.sh            # run the default stage set
-./tools/ci.sh <stage>     # run one stage
-./tools/ci.sh --list      # show what the stages are
+./scripts/gate.sh            # run the default stage set
+./scripts/gate.sh <stage>     # run one stage
+./kit-ci --list      # show what the stages are
 ```
 
 Stages: `tree selftest format version docexamples dbs build lint tests coverage release
