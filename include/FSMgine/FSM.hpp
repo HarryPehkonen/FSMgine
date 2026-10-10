@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <variant> // For std::monostate
 #include <vector>
@@ -281,9 +282,10 @@ template <typename TEvent> void FSM<TEvent>::setInitialState(std::string_view st
     current_state_ = interned_state;
     has_initial_state_ = true;
 
-    // Optimization 4: Static dummy event to avoid repeated object construction
-    static const TEvent dummy_event{};
-    executeOnEnterActions(current_state_, dummy_event);
+    if constexpr (std::is_default_constructible_v<TEvent>) {
+        const TEvent dummy_event{};
+        executeOnEnterActions(current_state_, dummy_event);
+    }
 }
 
 template <typename TEvent> void FSM<TEvent>::setCurrentState(std::string_view state) {
@@ -306,16 +308,22 @@ template <typename TEvent> void FSM<TEvent>::setCurrentState(std::string_view st
         throw FSMInvalidStateError(error_msg);
     }
 
-    // Optimization 4: Static dummy event to avoid repeated object construction
-    static const TEvent dummy_event{};
-    if (has_initial_state_ && current_state_ != interned_state) {
-        executeOnExitActions(current_state_, dummy_event);
+    if constexpr (std::is_default_constructible_v<TEvent>) {
+        const TEvent dummy_event{};
+        if (has_initial_state_ && current_state_ != interned_state) {
+            executeOnExitActions(current_state_, dummy_event);
+        }
+
+        current_state_ = interned_state;
+        has_initial_state_ = true;
+
+        executeOnEnterActions(current_state_, dummy_event);
+    } else {
+        // Non-default-constructible TEvent: no dummy event available, so
+        // exit/enter actions are skipped during setCurrentState.
+        current_state_ = interned_state;
+        has_initial_state_ = true;
     }
-
-    current_state_ = interned_state;
-    has_initial_state_ = true;
-
-    executeOnEnterActions(current_state_, dummy_event);
 }
 
 template <typename TEvent> bool FSM<TEvent>::process(const TEvent& event) {

@@ -4,6 +4,7 @@ add_executable(FSMgine_tests
     test_FSM.cpp
     test_Integration.cpp
     test_compiled_machine.cpp
+    test_nondefault_event.cpp
 )
 
 target_link_libraries(FSMgine_tests
