@@ -126,3 +126,85 @@ TEST_F(ReentrancyTest, MachineUsableAfterReentrancyException) {
     EXPECT_TRUE(fsm.process());
     EXPECT_EQ(fsm.getCurrentState(), "B");
 }
+
+// --- (g) An action that calls setInitialState() must throw ---
+
+TEST_F(ReentrancyTest, ActionCallingSetInitialStateThrows) {
+    TestFSM fsm;
+    fsm.get_builder()
+        .from("A")
+        .action([&fsm](const auto&) {
+            fsm.setInitialState("A"); // reentrant — should throw
+        })
+        .to("B");
+
+    fsm.setInitialState("A");
+    EXPECT_THROW(fsm.process(), std::logic_error);
+}
+
+// --- (h) An action that calls addOnEnterAction via builder must throw ---
+
+TEST_F(ReentrancyTest, ActionCallingOnEnterBuilderThrows) {
+    TestFSM fsm;
+    fsm.get_builder()
+        .from("A")
+        .action([&fsm](const auto&) {
+            // get_builder() is fine; onEnter() calls addOnEnterAction which guards
+            fsm.get_builder().onEnter("A", [](const auto&) {}).from("A").to("B");
+        })
+        .to("B");
+
+    fsm.setInitialState("A");
+    EXPECT_THROW(fsm.process(), std::logic_error);
+}
+
+// --- (i) An action that calls addOnExitAction via builder must throw ---
+
+TEST_F(ReentrancyTest, ActionCallingOnExitBuilderThrows) {
+    TestFSM fsm;
+    fsm.get_builder()
+        .from("A")
+        .action([&fsm](const auto&) {
+            // get_builder() is fine; onExit() calls addOnExitAction which guards
+            fsm.get_builder().onExit("A", [](const auto&) {}).from("A").to("B");
+        })
+        .to("B");
+
+    fsm.setInitialState("A");
+    EXPECT_THROW(fsm.process(), std::logic_error);
+}
+
+// --- (j) setInitialState guard releases after onEnter actions complete ---
+
+TEST_F(ReentrancyTest, SetInitialStateGuardReleasesAfterOnEnter) {
+    TestFSM fsm;
+    bool entered = false;
+    fsm.get_builder().onEnter("A", [&entered](const auto&) { entered = true; });
+    fsm.get_builder().from("A").to("B");
+
+    fsm.setInitialState("A"); // runs onEnter, guard clears
+    EXPECT_TRUE(entered);
+
+    // Should succeed — guard was released
+    EXPECT_TRUE(fsm.process());
+    EXPECT_EQ(fsm.getCurrentState(), "B");
+}
+
+// --- (k) setCurrentState guard releases after enter/exit actions complete ---
+
+TEST_F(ReentrancyTest, SetCurrentStateGuardReleasesAfterActions) {
+    TestFSM fsm;
+    bool exited = false;
+    bool entered = false;
+    fsm.get_builder().onExit("A", [&exited](const auto&) { exited = true; });
+    fsm.get_builder().onEnter("B", [&entered](const auto&) { entered = true; });
+    fsm.get_builder().from("A").to("B");
+
+    fsm.setInitialState("A");
+    fsm.setCurrentState("B"); // runs exit/enter, guard clears
+    EXPECT_TRUE(exited);
+    EXPECT_TRUE(entered);
+
+    // Should succeed — guard was released
+    fsm.setCurrentState("A");
+}

@@ -4,9 +4,12 @@
 #   tools/ci.sh --write-coverage-baseline coverage
 # path	missed_lines	total_lines	line_cover%
 .ci/build-coverage/include/FSMgine/version.hpp	0	1	100.00
-include/FSMgine/FSM.hpp	16	225	92.89
+include/FSMgine/FSM.hpp	7	225	96.89
 include/FSMgine/FSMBuilder.hpp	0	45	100.00
 include/FSMgine/StringInterner.hpp	0	2	100.00
 include/FSMgine/Transition.hpp	0	41	100.00
+# compiled/Machine.hpp: 1 unreachable line — the defensive `return false` after the
+# exhaustive switch over Op in passes(); every enumerator returns already, and C++17 has
+# no std::unreachable. No test can reach it without passing an Op value that does not exist.
 include/FSMgine/compiled/Machine.hpp	1	137	99.27
 src/StringInterner.cpp	0	34	100.00

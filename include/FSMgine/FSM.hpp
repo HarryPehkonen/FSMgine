@@ -6,6 +6,7 @@
 
 #include "FSMgine/StringInterner.hpp"
 #include "FSMgine/Transition.hpp"
+#include <atomic>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -176,7 +177,7 @@ public:
         current_state_ = other.current_state_;
         has_initial_state_ = other.has_initial_state_;
         // A moved-from FSM is not processing; the caller is.
-        other.processing_thread_ = std::thread::id{};
+        other.processing_thread_.store(std::thread::id{}, std::memory_order_relaxed);
         // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
     }
 
@@ -270,7 +271,16 @@ private:
     std::unordered_map<std::string_view, StateData> states_;
     std::string_view current_state_;
     bool has_initial_state_ = false;
-    std::thread::id processing_thread_{}; // reentrancy guard: id of thread inside process/actions
+    // Reentrancy guard: id of thread inside process/actions.
+    // std::atomic<std::thread::id> eliminates the data race between the unlocked
+    // pre-mutex check (same-thread reentrancy) and the locked write.  On x86
+    // with relaxed ordering this compiles to the same instructions as a plain
+    // load/store, so the single-threaded build pays nothing.
+    // NOLINTNEXTLINE(readability-redundant-preprocessor) — guard only needed in MT build
+    static_assert(std::is_trivially_copyable_v<std::thread::id>,
+                  "std::atomic<std::thread::id> requires trivially copyable thread::id "
+                  "(true on libstdc++ and libc++, not guaranteed by C++17)");
+    std::atomic<std::thread::id> processing_thread_{};
 
 #ifdef FSMGINE_MULTI_THREADED
     mutable std::mutex mutex_;
@@ -289,7 +299,7 @@ template <typename TEvent> FSMBuilder<TEvent> FSM<TEvent>::get_builder() {
 }
 
 template <typename TEvent> void FSM<TEvent>::setInitialState(std::string_view state) {
-    if (processing_thread_ == std::this_thread::get_id()) {
+    if (processing_thread_.load(std::memory_order_relaxed) == std::this_thread::get_id()) {
         throw FSMReentrancyError("setInitialState() called while the machine is processing. "
                                  "Actions must not call back into the machine.");
     }
@@ -318,18 +328,18 @@ template <typename TEvent> void FSM<TEvent>::setInitialState(std::string_view st
 
     if constexpr (std::is_default_constructible_v<TEvent>) {
         const TEvent dummy_event{};
-        processing_thread_ = std::this_thread::get_id();
+        processing_thread_.store(std::this_thread::get_id(), std::memory_order_relaxed);
         // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
         struct ProcessingGuard {
-            std::thread::id* owner;
-            ~ProcessingGuard() { *owner = std::thread::id{}; }
+            std::atomic<std::thread::id>* owner;
+            ~ProcessingGuard() { owner->store(std::thread::id{}, std::memory_order_relaxed); }
         } guard{&processing_thread_};
         executeOnEnterActions(current_state_, dummy_event);
     }
 }
 
 template <typename TEvent> void FSM<TEvent>::setCurrentState(std::string_view state) {
-    if (processing_thread_ == std::this_thread::get_id()) {
+    if (processing_thread_.load(std::memory_order_relaxed) == std::this_thread::get_id()) {
         throw FSMReentrancyError("setCurrentState() called while the machine is processing. "
                                  "Actions must not call back into the machine.");
     }
@@ -355,11 +365,11 @@ template <typename TEvent> void FSM<TEvent>::setCurrentState(std::string_view st
 
     if constexpr (std::is_default_constructible_v<TEvent>) {
         const TEvent dummy_event{};
-        processing_thread_ = std::this_thread::get_id();
+        processing_thread_.store(std::this_thread::get_id(), std::memory_order_relaxed);
         // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
         struct ProcessingGuard {
-            std::thread::id* owner;
-            ~ProcessingGuard() { *owner = std::thread::id{}; }
+            std::atomic<std::thread::id>* owner;
+            ~ProcessingGuard() { owner->store(std::thread::id{}, std::memory_order_relaxed); }
         } guard{&processing_thread_};
         if (has_initial_state_ && current_state_ != interned_state) {
             executeOnExitActions(current_state_, dummy_event);
@@ -380,8 +390,9 @@ template <typename TEvent> void FSM<TEvent>::setCurrentState(std::string_view st
 template <typename TEvent> bool FSM<TEvent>::process(const TEvent& event) {
     // Reentrancy check: must happen before the mutex to avoid deadlock in the MT build.
     // An action calling process() recursively is always same-thread, so the flag is visible
-    // in program order regardless of the mutex.
-    if (processing_thread_ == std::this_thread::get_id()) {
+    // in program order regardless of the mutex.  The atomic load/store eliminates the data
+    // race between this unlocked read and the locked write that follows.
+    if (processing_thread_.load(std::memory_order_relaxed) == std::this_thread::get_id()) {
         throw FSMReentrancyError("process() called recursively from an action or predicate. "
                                  "Actions must not call back into the machine.");
     }
@@ -390,13 +401,13 @@ template <typename TEvent> bool FSM<TEvent>::process(const TEvent& event) {
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
 
-    processing_thread_ = std::this_thread::get_id();
+    processing_thread_.store(std::this_thread::get_id(), std::memory_order_relaxed);
     // Scope guard: clear the owner on any exit (return or exception).
     // This ensures the machine is usable again after errors like FSMNotInitializedError.
     // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
     struct ProcessingGuard {
-        std::thread::id* owner;
-        ~ProcessingGuard() { *owner = std::thread::id{}; }
+        std::atomic<std::thread::id>* owner;
+        ~ProcessingGuard() { owner->store(std::thread::id{}, std::memory_order_relaxed); }
     } guard{&processing_thread_};
 
     if (!has_initial_state_) {
@@ -453,7 +464,7 @@ template <typename TEvent> std::string_view FSM<TEvent>::getCurrentState() const
 
 template <typename TEvent>
 void FSM<TEvent>::addTransition(std::string_view from_state, Transition<TEvent> transition) {
-    if (processing_thread_ == std::this_thread::get_id()) {
+    if (processing_thread_.load(std::memory_order_relaxed) == std::this_thread::get_id()) {
         throw FSMReentrancyError("addTransition() called while the machine is processing. "
                                  "Actions must not mutate the machine through the builder API.");
     }
@@ -478,7 +489,7 @@ void FSM<TEvent>::addTransition(std::string_view from_state, Transition<TEvent> 
 
 template <typename TEvent>
 void FSM<TEvent>::addOnEnterAction(std::string_view state, Action action) {
-    if (processing_thread_ == std::this_thread::get_id()) {
+    if (processing_thread_.load(std::memory_order_relaxed) == std::this_thread::get_id()) {
         throw FSMReentrancyError("addOnEnterAction() called while the machine is processing. "
                                  "Actions must not mutate the machine through the builder API.");
     }
@@ -499,7 +510,7 @@ void FSM<TEvent>::addOnEnterAction(std::string_view state, Action action) {
 
 template <typename TEvent>
 void FSM<TEvent>::addOnExitAction(std::string_view state, Action action) {
-    if (processing_thread_ == std::this_thread::get_id()) {
+    if (processing_thread_.load(std::memory_order_relaxed) == std::this_thread::get_id()) {
         throw FSMReentrancyError("addOnExitAction() called while the machine is processing. "
                                  "Actions must not mutate the machine through the builder API.");
     }
