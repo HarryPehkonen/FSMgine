@@ -187,6 +187,28 @@ FSMgine provides two methods for setting the current state:
 - **`setInitialState(state)`**: first-time initialization. Sets the current state and runs any `onEnter` actions for it; call it once after building the FSM.
 - **`setCurrentState(state)`**: runtime state changes outside normal transitions. Runs `onExit` actions for the current state (if any) and `onEnter` actions for the new one; useful for reset or error recovery.
 
+## Reentrancy Guard
+
+Actions (transition actions, on-enter, on-exit) **must not call back into the machine**. Calling `process()`, `setCurrentState()`, `setInitialState()`, or mutating the machine through the builder API from within an action throws `FSMReentrancyError` (a `std::logic_error`). This guard is always active — not just debug builds — because the cost is a single thread-id comparison per entry point, which is negligible compared to the map lookup that follows.
+
+```cpp
+// WRONG — throws FSMReentrancyError:
+fsmgine::FSM<> machine;
+machine.get_builder()
+    .from("A")
+    .action([&machine](const auto&) {
+        machine.process();           // reentrant → throws
+        machine.setCurrentState("X"); // reentrant → throws
+    })
+    .to("B");
+```
+
+The guard prevents two classes of bugs:
+1. **Iterator invalidation**: `process()` holds a reference into the `states_` map while iterating transitions; a reentrant call that adds transitions (`get_builder().from(...).to(...)`) can rehash the map and invalidate that reference.
+2. **Corrupted exit/enter sequence**: a reentrant `setCurrentState()` mutates `current_state_` before the outer `process()` checks it against the target state, running exit/enter actions on the wrong states.
+
+In the multi-threaded build (`FSMgineMT`), the mutex also prevents cross-thread concurrent access. The reentrancy guard catches same-thread re-entry specifically — the thread-id check happens before the mutex lock to avoid a deadlock.
+
 ## String Interning and Memory
 
 Every state name is interned: the FSM stores a `std::string_view` into an append-only, process-global arena rather than copying text, which turns name comparisons into pointer comparisons and makes repeated names free. Two consequences matter before you ship:

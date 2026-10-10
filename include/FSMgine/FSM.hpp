@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <type_traits>
 #include <unordered_map>
 #include <variant> // For std::monostate
@@ -53,6 +54,21 @@ public:
     /// @brief Constructs an exception for invalid state operations
     /// @param message Detailed error message
     explicit FSMInvalidStateError(const std::string& message) : std::invalid_argument(message) {}
+};
+
+/// @brief Exception thrown when user-supplied code (actions, predicates) calls back into the
+/// machine while it is already processing an event or changing state
+/// @ingroup core
+///
+/// @details Actions and predicates must not call process(), setCurrentState(),
+/// setInitialState(), or mutate the machine through the builder API while the machine is
+/// executing. Doing so would invalidate iterators and corrupt the exit/enter sequence.
+/// This exception is thrown instead of allowing the undefined behaviour.
+class FSMReentrancyError : public std::logic_error {
+public:
+    /// @brief Constructs a reentrancy violation exception
+    /// @param message Detailed error message
+    explicit FSMReentrancyError(const std::string& message) : std::logic_error(message) {}
 };
 
 /// @brief Exception thrown when a TransitionBuilder is used after it has been committed
@@ -159,6 +175,8 @@ public:
         states_ = std::move(other.states_);
         current_state_ = other.current_state_;
         has_initial_state_ = other.has_initial_state_;
+        // A moved-from FSM is not processing; the caller is.
+        other.processing_thread_ = std::thread::id{};
         // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
     }
 
@@ -192,14 +210,17 @@ public:
     /// @brief Sets the initial state of the FSM
     /// @param state The name of the initial state
     /// @throws FSMInvalidStateError if the state doesn't exist
-    /// @note This also executes any on-enter actions for the initial state
+    /// @throws FSMReentrancyError if called from within an action or predicate
+    /// @note This also executes any on-enter actions for the initial state. Actions must not call
+    /// back into the machine.
     void setInitialState(std::string_view state);
 
     /// @brief Changes the current state of the FSM
     /// @param state The name of the state to transition to
     /// @throws FSMInvalidStateError if the state doesn't exist
+    /// @throws FSMReentrancyError if called from within an action or predicate
     /// @note This executes on-exit actions for the current state and on-enter actions for the new
-    /// state
+    /// state. Actions must not call back into the machine.
     void setCurrentState(std::string_view state);
 
     /// @brief Gets the name of the current state
@@ -213,6 +234,13 @@ public:
     /// @throws FSMNotInitializedError if no initial state has been set
     /// @throws FSMStateNotFoundError if the current state is invalid
     /// @throws FSMInvalidStateError if a transition has no target state
+    /// @throws FSMReentrancyError if called from within an action or predicate
+    ///
+    /// @par Reentrancy
+    /// Actions (transition actions, on-enter, on-exit) must not call back into the machine.
+    /// Calling process(), setCurrentState(), setInitialState(), or mutating the machine through
+    /// the builder API from within an action throws FSMReentrancyError. This guard prevents
+    /// iterator invalidation and corruption of the exit/enter action sequence.
     bool process(const TEvent& event);
 
     /// @brief Processes a transition for event-less FSMs
@@ -242,6 +270,7 @@ private:
     std::unordered_map<std::string_view, StateData> states_;
     std::string_view current_state_;
     bool has_initial_state_ = false;
+    std::thread::id processing_thread_{}; // reentrancy guard: id of thread inside process/actions
 
 #ifdef FSMGINE_MULTI_THREADED
     mutable std::mutex mutex_;
@@ -260,6 +289,11 @@ template <typename TEvent> FSMBuilder<TEvent> FSM<TEvent>::get_builder() {
 }
 
 template <typename TEvent> void FSM<TEvent>::setInitialState(std::string_view state) {
+    if (processing_thread_ == std::this_thread::get_id()) {
+        throw FSMReentrancyError("setInitialState() called while the machine is processing. "
+                                 "Actions must not call back into the machine.");
+    }
+
 #ifdef FSMGINE_MULTI_THREADED
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
@@ -284,11 +318,22 @@ template <typename TEvent> void FSM<TEvent>::setInitialState(std::string_view st
 
     if constexpr (std::is_default_constructible_v<TEvent>) {
         const TEvent dummy_event{};
+        processing_thread_ = std::this_thread::get_id();
+        // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+        struct ProcessingGuard {
+            std::thread::id* owner;
+            ~ProcessingGuard() { *owner = std::thread::id{}; }
+        } guard{&processing_thread_};
         executeOnEnterActions(current_state_, dummy_event);
     }
 }
 
 template <typename TEvent> void FSM<TEvent>::setCurrentState(std::string_view state) {
+    if (processing_thread_ == std::this_thread::get_id()) {
+        throw FSMReentrancyError("setCurrentState() called while the machine is processing. "
+                                 "Actions must not call back into the machine.");
+    }
+
 #ifdef FSMGINE_MULTI_THREADED
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
@@ -310,6 +355,12 @@ template <typename TEvent> void FSM<TEvent>::setCurrentState(std::string_view st
 
     if constexpr (std::is_default_constructible_v<TEvent>) {
         const TEvent dummy_event{};
+        processing_thread_ = std::this_thread::get_id();
+        // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+        struct ProcessingGuard {
+            std::thread::id* owner;
+            ~ProcessingGuard() { *owner = std::thread::id{}; }
+        } guard{&processing_thread_};
         if (has_initial_state_ && current_state_ != interned_state) {
             executeOnExitActions(current_state_, dummy_event);
         }
@@ -327,9 +378,26 @@ template <typename TEvent> void FSM<TEvent>::setCurrentState(std::string_view st
 }
 
 template <typename TEvent> bool FSM<TEvent>::process(const TEvent& event) {
+    // Reentrancy check: must happen before the mutex to avoid deadlock in the MT build.
+    // An action calling process() recursively is always same-thread, so the flag is visible
+    // in program order regardless of the mutex.
+    if (processing_thread_ == std::this_thread::get_id()) {
+        throw FSMReentrancyError("process() called recursively from an action or predicate. "
+                                 "Actions must not call back into the machine.");
+    }
+
 #ifdef FSMGINE_MULTI_THREADED
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
+
+    processing_thread_ = std::this_thread::get_id();
+    // Scope guard: clear the owner on any exit (return or exception).
+    // This ensures the machine is usable again after errors like FSMNotInitializedError.
+    // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+    struct ProcessingGuard {
+        std::thread::id* owner;
+        ~ProcessingGuard() { *owner = std::thread::id{}; }
+    } guard{&processing_thread_};
 
     if (!has_initial_state_) {
         throw FSMNotInitializedError();
@@ -385,6 +453,11 @@ template <typename TEvent> std::string_view FSM<TEvent>::getCurrentState() const
 
 template <typename TEvent>
 void FSM<TEvent>::addTransition(std::string_view from_state, Transition<TEvent> transition) {
+    if (processing_thread_ == std::this_thread::get_id()) {
+        throw FSMReentrancyError("addTransition() called while the machine is processing. "
+                                 "Actions must not mutate the machine through the builder API.");
+    }
+
 #ifdef FSMGINE_MULTI_THREADED
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
@@ -405,6 +478,11 @@ void FSM<TEvent>::addTransition(std::string_view from_state, Transition<TEvent> 
 
 template <typename TEvent>
 void FSM<TEvent>::addOnEnterAction(std::string_view state, Action action) {
+    if (processing_thread_ == std::this_thread::get_id()) {
+        throw FSMReentrancyError("addOnEnterAction() called while the machine is processing. "
+                                 "Actions must not mutate the machine through the builder API.");
+    }
+
 #ifdef FSMGINE_MULTI_THREADED
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
@@ -421,6 +499,11 @@ void FSM<TEvent>::addOnEnterAction(std::string_view state, Action action) {
 
 template <typename TEvent>
 void FSM<TEvent>::addOnExitAction(std::string_view state, Action action) {
+    if (processing_thread_ == std::this_thread::get_id()) {
+        throw FSMReentrancyError("addOnExitAction() called while the machine is processing. "
+                                 "Actions must not mutate the machine through the builder API.");
+    }
+
 #ifdef FSMGINE_MULTI_THREADED
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
