@@ -122,10 +122,23 @@ template <class Event>
 /// a template parameter)
 /// @ingroup compiled
 ///
-/// @details Semantics match fsmgine::FSM<TEvent> exactly: the first matching transition
-/// in declaration order wins, a transition with no refinement fires on the event kind
-/// alone, and when nothing matches process() returns false and the state is unchanged
-/// (no sentinel value).
+/// @details First-match-wins and action behavior match fsmgine::FSM<TEvent>.
+/// On a self-transition fsmgine::FSM runs exit+enter (external;
+/// ENTRY_EXIT.md rule of record) while compiled::Machine runs the row's
+/// action only.
+///
+/// compiled::Machine deliberately has no onEnter/onExit hooks — the lean
+/// hot path (one flat transition table, plain function pointers, no
+/// std::function) is the point of this class.  Machines that need
+/// entry/exit should be written as a .fsm file and processed by
+/// FSMTable's fsmtable-gen, which folds exit → action → entry into
+/// per-row wrapper functions (complete by construction).  See
+/// FSMTable/ENTRY_EXIT.md for the fleet rule of record.
+///
+/// One case rows cannot simulate: initial-state entry.  fsmgine::FSM
+/// runs onEnter from setInitialState(); there is no transition to hang
+/// that on in a hand-built compiled machine, so the caller must fire it
+/// explicitly after setInitialState() if wanted.
 ///
 /// Unlike fsmgine::FSM, nothing here is interned, no string is hashed and no
 /// std::function is ever called: a row is plain data (two enums, a bool, an Op and an

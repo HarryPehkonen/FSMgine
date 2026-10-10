@@ -435,13 +435,13 @@ template <typename TEvent> bool FSM<TEvent>::process(const TEvent& event) {
                 throw FSMStateNotFoundError(std::string(target_state));
             }
 
+            // RULING (t_ba3c6d56): fleet standard is exit → action → entry;
+            // self-transitions are external (exit and enter both run).
+            // See FSMTable/ENTRY_EXIT.md for the rule of record.
+            executeOnExitActions(current_state_, event);
             transition.executeActions(event);
-
-            if (current_state_ != target_state) {
-                executeOnExitActions(current_state_, event);
-                current_state_ = target_state;
-                executeOnEnterActions(current_state_, event);
-            }
+            current_state_ = target_state;
+            executeOnEnterActions(current_state_, event);
 
             return true;
         }

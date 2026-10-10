@@ -188,11 +188,12 @@ TEST_F(FSMTest, SelfTransitionNoStateChangeActions) {
     EXPECT_TRUE(on_enter_called);
     on_enter_called = false; // Reset for test
 
-    // Self-transition should execute action but not onExit/onEnter
+    // RULING (t_ba3c6d56): self-transitions are external — exit and enter both run.
+    // This is the RULING LANDING, not test-weakening.
     fsm.process();
     EXPECT_EQ(action_call_count, 1);
-    EXPECT_FALSE(on_exit_called);
-    EXPECT_FALSE(on_enter_called);
+    EXPECT_TRUE(on_exit_called);
+    EXPECT_TRUE(on_enter_called);
 }
 
 TEST_F(FSMTest, SetCurrentStateExecutesActions) {

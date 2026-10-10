@@ -187,6 +187,8 @@ FSMgine provides two methods for setting the current state:
 - **`setInitialState(state)`**: first-time initialization. Sets the current state and runs any `onEnter` actions for it; call it once after building the FSM.
 - **`setCurrentState(state)`**: runtime state changes outside normal transitions. Runs `onExit` actions for the current state (if any) and `onEnter` actions for the new one; useful for reset or error recovery.
 
+The entry/exit order and external self-transition rule are defined fleet-wide in [`FSMTable/ENTRY_EXIT.md`](https://github.com/HarryPehkonen/FSMTable/blob/main/ENTRY_EXIT.md): exit → action → entry; self-transitions run both exit and enter.
+
 ## Reentrancy Guard
 
 Actions (transition actions, on-enter, on-exit) **must not call back into the machine**. Calling `process()`, `setCurrentState()`, `setInitialState()`, or mutating the machine through the builder API from within an action throws `FSMReentrancyError` (a `std::logic_error`). This guard is always active — not just debug builds — because the cost is a single thread-id comparison per entry point, which is negligible compared to the map lookup that follows.
@@ -258,6 +260,8 @@ int main() {
 ```
 
 See `examples/compiled_machine.cpp` for the same machine built on both back ends, driven by one shared event script and asserted to agree at every step. `#include <FSMgine/compiled/Machine.hpp>` is a header the umbrella `FSMgine.hpp` **deliberately does not include**, so existing users of the interpreted back end pay nothing for a feature they never asked for.
+
+**No entry/exit hooks — by design.** `compiled::Machine` has no `onEnter`/`onExit`; the lean hot path is the point.  Machines that need entry/exit should use [FSMTable](https://github.com/HarryPehkonen/FSMTable)'s `fsmtable-gen`, which folds exit → action → entry into per-row wrapper functions.  One case rows cannot simulate: `fsmgine::FSM` runs `onEnter` from `setInitialState()`, but a hand-built compiled machine has no transition to hang that on — fire it explicitly if wanted.  See [ENTRY_EXIT.md](https://github.com/HarryPehkonen/FSMTable/blob/main/ENTRY_EXIT.md) for the fleet rule of record.
 
 ### Four limits, plainly (v1)
 
