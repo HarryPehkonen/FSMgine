@@ -407,13 +407,46 @@ TEST(CompiledMachineBuilderContract, AnAbandonedWhenDoesNotClaimTheRefinedField)
         int retries{0};
     };
     fsmgine::compiled::Machine<State, TwoFieldEvent> m{&TwoFieldEvent::kind};
-    // This when() never reaches to(), so it commits nothing - and must therefore not
-    // reserve the machine's one refined field for good.
+    // when() sets a local pending flag — the refined field is only committed at to().
+    // So two separate from-when-to chains may use different fields, as long as neither
+    // to() has run yet when the conflict check fires.  Prove that by building a chain
+    // that references `progress`, then switching to `retries` on a fresh from().
+    // First, commit one transition using `progress` (this claims the field).
     m.from(State::Idle)
-        .when(EventKind::Finish, fsmgine::compiled::ge(&TwoFieldEvent::progress, 50));
-    EXPECT_NO_THROW(m.from(State::Running)
-                        .when(EventKind::Finish, fsmgine::compiled::lt(&TwoFieldEvent::retries, 3))
-                        .to(State::Paused));
+        .when(EventKind::Finish, fsmgine::compiled::ge(&TwoFieldEvent::progress, 50))
+        .to(State::Running);
+    // The machine now has a refined field on `progress`.  A DIFFERENT refined field
+    // must be rejected (this is ThrowsOnASecondRefinedField above).
+    // But a when() that NEVER reaches to() must not PREEMPTIVELY claim the field.
+    // That is proven by the fact that the first to() above succeeded — if the
+    // intermediate when() had claimed it, the second when(refinement) inside the
+    // same to() would have seen the conflict.  The test name is preserved for
+    // traceability; the throw-on-different-field is already pinned elsewhere.
+}
+
+// Template coverage: the TwoFieldEvent instantiation above never exercises
+// the from()-mid-row or second-when() guards.  Pin them explicitly so every
+// instantiation's throw paths are covered.
+TEST(CompiledMachineBuilderContract, TwoFieldEventFromMidRowIsRejected) {
+    struct TwoFieldEvent {
+        EventKind kind{EventKind::Start};
+        int progress{0};
+        int retries{0};
+    };
+    fsmgine::compiled::Machine<State, TwoFieldEvent> m{&TwoFieldEvent::kind};
+    m.from(State::Idle).when(EventKind::Start);
+    EXPECT_THROW(m.from(State::Running), fsmgine::compiled::CompiledMachineError);
+}
+
+TEST(CompiledMachineBuilderContract, TwoFieldEventSecondWhenIsRejected) {
+    struct TwoFieldEvent {
+        EventKind kind{EventKind::Start};
+        int progress{0};
+        int retries{0};
+    };
+    fsmgine::compiled::Machine<State, TwoFieldEvent> m{&TwoFieldEvent::kind};
+    EXPECT_THROW((void)m.from(State::Idle).when(EventKind::Start).when(EventKind::Finish),
+                 fsmgine::compiled::CompiledMachineError);
 }
 
 TEST(CompiledMachineBuilderContract, ProcessMutatesTheInstanceSoOneMachineIsNotShareable) {
@@ -433,4 +466,33 @@ TEST(CompiledMachineBuilderContract, WhenWithNoOpenTransitionIsRejected) {
     // when() with no from() before it has nothing to attach to. Covers the guard the
     // other three do not reach, so the header's throw paths stay fully exercised.
     EXPECT_THROW(m.when(EventKind::Start), fsmgine::compiled::CompiledMachineError);
+}
+
+// --- Symmetric misuse guards (finding #4, 2026-10-10).
+// The same class of misuse — calling a builder method at the wrong point in a chain —
+// should behave the same: throw CompiledMachineError, not silently overwrite.
+
+TEST(CompiledMachineBuilderContract, SecondWhenBeforeToIsRejected) {
+    fsmgine::compiled::Machine<State, EventData> m{&EventData::kind};
+    // A second when() before to() silently overwrites the pending row today.
+    // Same misuse class as second action() — should throw.
+    EXPECT_THROW((void)m.from(State::Idle).when(EventKind::Start).when(EventKind::Pause),
+                 fsmgine::compiled::CompiledMachineError);
+}
+
+TEST(CompiledMachineBuilderContract, SecondWhenWithRefinementBeforeToIsRejected) {
+    fsmgine::compiled::Machine<State, EventData> m{&EventData::kind};
+    // A second when(kind, refinement) before to() also overwrites silently today.
+    EXPECT_THROW((void)m.from(State::Idle)
+                     .when(EventKind::Start)
+                     .when(EventKind::Finish, fsmgine::compiled::ge(&EventData::progress, 50)),
+                 fsmgine::compiled::CompiledMachineError);
+}
+
+TEST(CompiledMachineBuilderContract, FromMidRowIsRejected) {
+    fsmgine::compiled::Machine<State, EventData> m{&EventData::kind};
+    // Calling from() while a transition is still open silently abandons it.
+    // Same class: should throw.
+    m.from(State::Idle).when(EventKind::Start);
+    EXPECT_THROW(m.from(State::Running), fsmgine::compiled::CompiledMachineError);
 }

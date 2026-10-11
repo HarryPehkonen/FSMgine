@@ -187,12 +187,16 @@ public:
     FSM& operator=(FSM&& other) noexcept {
         if (this != &other) {
 #ifdef FSMGINE_MULTI_THREADED
-            std::unique_lock<std::mutex> lock(mutex_);
-            std::unique_lock<std::mutex> other_lock(other.mutex_);
+            // std::scoped_lock acquires both mutexes atomically (deadlock-avoidance
+            // algorithm), eliminating the lock-ordering cycle that existed when
+            // mutex_ and other.mutex_ were acquired in fixed order.
+            std::scoped_lock lk(mutex_, other.mutex_);
 #endif
             states_ = std::move(other.states_);
             current_state_ = other.current_state_;
             has_initial_state_ = other.has_initial_state_;
+            // A moved-from FSM is not processing; the caller is.
+            other.processing_thread_.store(std::thread::id{}, std::memory_order_relaxed);
         }
         return *this;
     }

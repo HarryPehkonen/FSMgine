@@ -11,6 +11,12 @@
 #include "FSMgine/StringInterner.hpp"
 #include <gtest/gtest.h>
 
+#ifdef FSMGINE_MULTI_THREADED
+#include <atomic>
+#include <chrono>
+#include <thread>
+#endif
+
 using namespace fsmgine;
 
 using TestFSM = FSM<>;
@@ -208,3 +214,61 @@ TEST_F(ReentrancyTest, SetCurrentStateGuardReleasesAfterActions) {
     // Should succeed — guard was released
     fsm.setCurrentState("A");
 }
+
+// --- Move-assignment deadlock stress test (finding #7a, 2026-10-10).
+// Before the fix, move-assignment locked mutex_ then other.mutex_ in fixed order.
+// Two threads doing opposing moves (a=move(b) vs b=move(a)) formed the classic
+// lock-ordering cycle.  std::scoped_lock acquires both atomically, eliminating the
+// cycle.  This stress test exercises the exact scenario under high contention.
+//
+// Compiled only in the MT build — the mutex code does not exist in the ST build.
+#ifdef FSMGINE_MULTI_THREADED
+TEST_F(ReentrancyTest, CrossMoveAssignmentDoesNotDeadlock) {
+    // Two distinct machines, each with a transition so they carry real state.
+    auto build = []() {
+        TestFSM fsm;
+        fsm.get_builder().from("A").to("B");
+        fsm.get_builder().from("B").to("A");
+        fsm.setInitialState("A");
+        return fsm;
+    };
+
+    constexpr int kIterations = 5000;
+    std::atomic<bool> done{false};
+    std::atomic<bool> deadlocked{false};
+
+    // Two threads do opposing move-assignments in a tight loop.
+    auto worker = [&](TestFSM& lhs, TestFSM& rhs) {
+        for (int i = 0; i < kIterations && !done.load(std::memory_order_relaxed); ++i) {
+            lhs = std::move(rhs);
+            // Recreate rhs so the next iteration has something to move from.
+            rhs = build();
+        }
+    };
+
+    TestFSM a = build();
+    TestFSM b = build();
+
+    // Watchdog: if threads deadlock, they never finish and the test times out.
+    // Start it before the threads so the 10s clock runs concurrently.
+    std::thread watchdog([&]() {
+        using namespace std::chrono_literals;
+        for (int i = 0; i < 100; ++i) {
+            std::this_thread::sleep_for(100ms);
+            if (done.load(std::memory_order_relaxed))
+                return;
+        }
+        deadlocked.store(true, std::memory_order_relaxed);
+    });
+
+    std::thread t1(worker, std::ref(a), std::ref(b));
+    std::thread t2(worker, std::ref(b), std::ref(a));
+
+    t1.join();
+    t2.join();
+    done.store(true, std::memory_order_relaxed); // signal watchdog
+    watchdog.join();
+
+    EXPECT_FALSE(deadlocked.load()) << "move-assignment appears to have deadlocked (10s timeout)";
+}
+#endif

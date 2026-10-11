@@ -200,6 +200,10 @@ public:
     /// @param state The source state of the transition being built
     /// @return *this, to continue the chain with when()
     Machine& from(State state) {
+        if (rowOpen_) {
+            throw CompiledMachineError(
+                "from() called with a transition already open: commit it with to() first");
+        }
         buildFrom_ = state;
         buildRow_ = Transition<State, Event>{};
         rowOpen_ = true;
@@ -212,6 +216,10 @@ public:
     /// @return *this, to continue the chain with to()
     Machine& when(EventKind kind) {
         requireOpenTransition("when()");
+        if (hasWhen_) {
+            throw CompiledMachineError(
+                "compiled::Machine supports exactly one when() per transition");
+        }
         buildRow_ = Transition<State, Event>{buildFrom_, kind,       false,           Op::Eq,
                                              0,          buildFrom_, buildRow_.action};
         hasWhen_ = true;
@@ -226,6 +234,10 @@ public:
     /// DIFFERENT field: v1 supports exactly one refined field per machine
     Machine& when(EventKind kind, Refinement<Event> refinement) {
         requireOpenTransition("when()");
+        if (hasWhen_) {
+            throw CompiledMachineError(
+                "compiled::Machine supports exactly one when() per transition");
+        }
         if (refinedMember_ != nullptr && refinedMember_ != refinement.member) {
             throw CompiledMachineError(
                 "compiled::Machine supports exactly one refined field per machine");
