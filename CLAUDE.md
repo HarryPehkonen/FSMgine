@@ -214,10 +214,16 @@ int main() {
   the row being built, like `TransitionBuilder::to()`, but keeps returning `*this` so
   `from()` can start the next row on the same object), `Machine& withNames(NameFn)`,
   `setInitialState`/`setCurrentState(State)`, `State getCurrentState() const`,
-  `std::string_view currentStateName() const`, `bool process(const Event&)`. Semantics
-  match `fsmgine::FSM` exactly: first matching transition wins, an action (a plain
-  `void(*)(const Event&)` function pointer — it cannot capture) runs before the state
-  change, and a non-match leaves the state unchanged.
+  `std::string_view currentStateName() const`, `bool process(const Event&)`. First
+  matching transition wins and a non-match leaves the state unchanged — same as
+  `fsmgine::FSM`. Differences: `compiled::Machine` has no `onEnter`/`onExit` (the lean
+  hot path is the point; machines needing entry/exit should use FSMTable's
+  `fsmtable-gen`, which folds exit → action → entry into per-row wrapper functions); on
+  a self-transition `fsmgine::FSM` runs exit→action→entry (external) while
+  `compiled::Machine` runs the row's action only; initial-state entry has no row to
+  simulate — `fsmgine::FSM` runs `onEnter` from `setInitialState()`, a compiled-machine
+  caller fires it explicitly if wanted. Fleet rule of record: FSMTable's
+  ENTRY_EXIT.md.
 - `fsmgine::compiled::eq/lt/le/gt/ge(int Event::*, int)` build a `Refinement<Event>` —
   v1 supports exactly **one** refined field per machine (a second `when(kind,
   refinement)` naming a different member throws `CompiledMachineError`) and exactly
