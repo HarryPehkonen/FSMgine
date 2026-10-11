@@ -103,7 +103,7 @@ A release's notes lead with a compatibility table; filling it in is a human job,
 convention: while this library has no consumers, a breaking (`!`) commit is a MINOR bump.
 `--set X.Y.Z` overrides that recommendation to express a deliberate MAJOR — the honest
 version when a public method is removed or renamed, as with the StringInterner changes
-below. The declared version is currently 2.0.0.
+below. The declared version lives only in CMakeLists.txt; `tools/release.sh status` reports it and the newest tag.
 
 ## Coding Standards
 
